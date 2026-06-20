@@ -11,8 +11,8 @@ android {
 
     defaultConfig {
         applicationId = "com.rayner.peregrine"
-        minSdk = 37
-        targetSdk = 37
+        minSdk = 26
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
 
@@ -37,6 +37,14 @@ android {
     }
 }
 
+configurations.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.jetbrains.kotlin" && requested.name == "kotlin-metadata-jvm") {
+            useVersion("2.4.0")
+        }
+    }
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
@@ -56,7 +64,9 @@ dependencies {
     // Retrofit & OkHttp
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
+    implementation(libs.retrofit.converter.scalars)
     implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
 
     // Room
     implementation(libs.room.runtime)
@@ -73,7 +83,9 @@ dependencies {
     // Media3 (ExoPlayer)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.datasource.okhttp)
     implementation(libs.media3.ui)
+    implementation(libs.streamWebrtcAndroid)
 
     // Security
     implementation(libs.security.crypto)

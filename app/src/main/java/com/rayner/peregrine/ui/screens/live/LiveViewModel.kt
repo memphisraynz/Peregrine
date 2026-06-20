@@ -2,8 +2,10 @@ package com.rayner.peregrine.ui.screens.live
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import coil3.ImageLoader
 import com.rayner.peregrine.domain.model.Camera
 import com.rayner.peregrine.domain.repository.FrigateRepository
+import okhttp3.OkHttpClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,37 +14,73 @@ import javax.inject.Inject
 
 data class LiveUiState(
     val cameras: List<Camera> = emptyList(),
+    val activeReviews: List<Map<String, Any>> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null
 )
 
 @HiltViewModel
 class LiveViewModel @Inject constructor(
-    private val repository: FrigateRepository
+    private val repository: FrigateRepository,
+    val imageLoader: ImageLoader,
+    val okHttpClient: OkHttpClient
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LiveUiState())
     val uiState = _uiState.asStateFlow()
 
     init {
-        loadCameras()
+        loadData()
     }
 
-    fun loadCameras() {
+    fun loadData() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            val result = repository.getCameras()
-            if (result.isSuccess) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    cameras = result.getOrDefault(emptyList())
-                )
-            } else {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = "Failed to load cameras: ${result.exceptionOrNull()?.message}"
-                )
+
+            val camerasResult = repository.getCameras()
+            val reviewResult = repository.getReviewItems()
+
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                cameras = camerasResult.getOrDefault(emptyList()),
+                activeReviews = reviewResult.getOrDefault(emptyList()).filter { it["end_time"] == null }
+            )
+
+            if (camerasResult.isFailure) {
+                _uiState.value = _uiState.value.copy(error = "Failed to load cameras")
             }
         }
+    }
+
+    fun setLive(cameraName: String, isLive: Boolean) {
+        val updatedCameras = _uiState.value.cameras.map {
+            if (it.name == cameraName) it.copy(isLive = isLive) else it
+        }
+        _uiState.value = _uiState.value.copy(cameras = updatedCameras)
+    }
+
+    fun toggleLive(cameraName: String) {
+        val camera = _uiState.value.cameras.firstOrNull { it.name == cameraName } ?: return
+        setLive(cameraName, !camera.isLive)
+    }
+
+    fun toggleMic(cameraName: String) {
+        val updatedCameras = _uiState.value.cameras.map {
+            if (it.name == cameraName) it.copy(isMicEnabled = !it.isMicEnabled) else it
+        }
+        _uiState.value = _uiState.value.copy(cameras = updatedCameras)
+    }
+
+    fun toggleSpeaker(cameraName: String) {
+        val updatedCameras = _uiState.value.cameras.map {
+            if (it.name == cameraName) {
+                val newState = !it.isSpeakerEnabled
+                it.copy(
+                    isSpeakerEnabled = newState,
+                    isLive = if (newState) true else it.isLive
+                )
+            } else it
+        }
+        _uiState.value = _uiState.value.copy(cameras = updatedCameras)
     }
 }

@@ -1,4 +1,4 @@
-package com.rayner.peregrine.ui.screens.review
+package com.rayner.peregrine.ui.screens.explore
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -7,41 +7,41 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
 import javax.inject.Inject
 
-data class ReviewUiState(
-    val reviewItems: List<Map<String, Any>> = emptyList(),
+data class ExploreUiState(
+    val labels: List<String> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null
 )
 
 @HiltViewModel
-class ReviewViewModel @Inject constructor(
-    private val repository: FrigateRepository,
-    val okHttpClient: OkHttpClient
+class ExploreViewModel @Inject constructor(
+    private val repository: FrigateRepository
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(ReviewUiState())
+    private val _uiState = MutableStateFlow(ExploreUiState())
     val uiState = _uiState.asStateFlow()
 
     init {
-        loadReviewItems()
+        loadLabels()
     }
 
-    fun loadReviewItems() {
+    fun loadLabels() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            val result = repository.getReviewItems()
+            val result = repository.getEvents()
             if (result.isSuccess) {
+                val events = result.getOrDefault(emptyList())
+                val labels = events.mapNotNull { it["label"] as? String }.distinct()
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    reviewItems = result.getOrDefault(emptyList())
+                    labels = labels
                 )
             } else {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = "Failed to load review items: ${result.exceptionOrNull()?.message}"
+                    error = "Failed to load tags"
                 )
             }
         }

@@ -13,6 +13,13 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     object Review : Screen("review", "Review", Icons.Default.RateReview)
     object Explore : Screen("explore", "Explore", Icons.Default.Explore)
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
+    object Logs : Screen("logs", "Logs")
+    object ReviewPlayer : Screen("review_player/{eventId}", "Clip") {
+        fun createRoute(eventId: String) = "review_player/$eventId"
+    }
+    object CameraDetail : Screen("camera/{cameraName}?autoplay={autoplay}", "Camera") {
+        fun createRoute(cameraName: String, autoplay: Boolean = false) = "camera/$cameraName?autoplay=$autoplay"
+    }
 }
 
 val bottomNavItems = listOf(

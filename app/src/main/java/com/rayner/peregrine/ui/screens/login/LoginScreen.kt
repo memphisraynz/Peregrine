@@ -23,40 +23,35 @@ fun LoginScreen(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(text = "Connect to Frigate", style = MaterialTheme.typography.headlineMedium)
+        Text(text = "Peregrine", style = MaterialTheme.typography.headlineLarge)
         Spacer(modifier = Modifier.height(32.dp))
 
         OutlinedTextField(
             value = uiState.serverUrl,
             onValueChange = viewModel::onServerUrlChange,
-            label = { Text("Server URL (e.g. http://192.168.1.100:5000)") },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !uiState.isLoading
+            label = { Text("Server URL") },
+            modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(16.dp))
 
         OutlinedTextField(
             value = uiState.username,
             onValueChange = viewModel::onUsernameChange,
-            label = { Text("Username (Optional)") },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !uiState.isLoading
+            label = { Text("Username") },
+            modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(16.dp))
 
         OutlinedTextField(
             value = uiState.password,
             onValueChange = viewModel::onPasswordChange,
-            label = { Text("Password (Optional)") },
+            label = { Text("Password") },
             modifier = Modifier.fillMaxWidth(),
-            visualTransformation = PasswordVisualTransformation(),
-            enabled = !uiState.isLoading
+            visualTransformation = PasswordVisualTransformation()
         )
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -71,10 +66,16 @@ fun LoginScreen(
             enabled = !uiState.isLoading && uiState.serverUrl.isNotBlank()
         ) {
             if (uiState.isLoading) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                CircularProgressIndicator(modifier = Modifier.size(24.dp))
             } else {
                 Text("Login")
             }
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        TextButton(onClick = { /* ViewModel will handle logging in the next step */ }) {
+            Text("Run Connectivity Trace (Check Logcat)")
         }
     }
 }

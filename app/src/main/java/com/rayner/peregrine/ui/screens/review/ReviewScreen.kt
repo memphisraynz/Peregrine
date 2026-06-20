@@ -1,5 +1,6 @@
 package com.rayner.peregrine.ui.screens.review
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -7,14 +8,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil3.compose.AsyncImage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReviewScreen(
-    viewModel: ReviewViewModel = hiltViewModel()
+    viewModel: ReviewViewModel = hiltViewModel(),
+    onItemClick: (String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -24,11 +29,11 @@ fun ReviewScreen(
         }
     ) { padding ->
         if (uiState.isLoading) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
         } else if (uiState.error != null) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text(text = uiState.error!!, color = MaterialTheme.colorScheme.error)
             }
         } else {
@@ -37,7 +42,11 @@ fun ReviewScreen(
                 modifier = Modifier.fillMaxSize().padding(padding)
             ) {
                 items(uiState.reviewItems) { item ->
-                    ReviewItemCard(item)
+                    val id = item["id"] as? String ?: ""
+                    ReviewItemCard(
+                        item = item,
+                        onClick = { onItemClick(id) }
+                    )
                 }
             }
         }
@@ -45,19 +54,53 @@ fun ReviewScreen(
 }
 
 @Composable
-fun ReviewItemCard(item: Map<String, Any>) {
+fun ReviewItemCard(
+    item: Map<String, Any>,
+    onClick: () -> Unit
+) {
     val camera = item["camera"] as? String ?: "Unknown"
-    val label = item["label"] as? String ?: "Object"
+    val label = item["label"] as? String
+        ?: item["severity"] as? String
+        ?: "Review"
     val startTime = item["start_time"]?.toString() ?: ""
+    val thumbPath = item["thumb_path"] as? String
+    val isRetained = item["retain_indefinitely"] as? Boolean ?: false
 
     Card(
         modifier = Modifier
             .padding(8.dp)
             .fillMaxWidth()
+            .clickable(onClick = onClick)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = "$label detected on $camera", style = MaterialTheme.typography.titleMedium)
-            Text(text = "Time: $startTime", style = MaterialTheme.typography.bodySmall)
+        Column {
+            if (thumbPath != null) {
+                AsyncImage(
+                    model = "https://frigate.rayner.network$thumbPath",
+                    contentDescription = "$camera review thumbnail",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1.77f),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = label, style = MaterialTheme.typography.titleLarge)
+                    if (isRetained) {
+                        SuggestionChip(
+                            onClick = { },
+                            label = { Text("Retained") }
+                        )
+                    }
+                }
+                Text(text = "Camera: $camera", style = MaterialTheme.typography.bodyMedium)
+                Text(text = "Started: $startTime", style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }

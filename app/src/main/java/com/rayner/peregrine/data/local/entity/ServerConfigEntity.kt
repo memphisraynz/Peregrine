@@ -8,6 +8,9 @@ data class ServerConfigEntity(
     @PrimaryKey val id: Int = 0,
     val serverUrl: String,
     val username: String? = null,
-    val encryptedPassword: String? = null, // Will be handled by encrypted storage later or stored here for simplicity if needed
+    val encryptedPassword: String? = null,
+    val authCookie: String? = null,
+    val authCookieExpiresAt: Long? = null,
+    val isLoggedIn: Boolean = false,
     val isActive: Boolean = true
 )

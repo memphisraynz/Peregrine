@@ -3,6 +3,7 @@ package com.rayner.peregrine.ui.screens.login
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rayner.peregrine.data.local.entity.ServerConfigEntity
+import com.rayner.peregrine.data.remote.api.ServerUrlManager
 import com.rayner.peregrine.domain.repository.FrigateRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,7 +23,8 @@ data class LoginUiState(
 
 @HiltViewModel
 class LoginViewModel @Inject constructor(
-    private val repository: FrigateRepository
+    private val repository: FrigateRepository,
+    private val serverUrlManager: ServerUrlManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LoginUiState())
@@ -32,9 +34,11 @@ class LoginViewModel @Inject constructor(
         viewModelScope.launch {
             val config = repository.getServerConfig().firstOrNull()
             config?.let {
+                serverUrlManager.setUrl(it.serverUrl)
                 _uiState.value = _uiState.value.copy(
                     serverUrl = it.serverUrl,
-                    username = it.username ?: ""
+                    username = it.username ?: "",
+                    isLoginSuccessful = false
                 )
             }
         }
@@ -54,22 +58,34 @@ class LoginViewModel @Inject constructor(
 
     fun onLoginClick() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            var url = _uiState.value.serverUrl.trim()
+            if (url.isEmpty()) return@launch
+
+            if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                url = "https://$url"
+            }
+            url = url.removeSuffix("/")
+
+            serverUrlManager.setUrl(url)
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null, serverUrl = url)
             
-            val config = ServerConfigEntity(
-                serverUrl = _uiState.value.serverUrl,
-                username = _uiState.value.username,
-                encryptedPassword = _uiState.value.password // FIXME: Encrypt password
-            )
-            repository.updateServerConfig(config)
+            // Attempt Login
+            val loginResult = repository.login(_uiState.value.username, _uiState.value.password)
             
-            val result = repository.getVersion()
-            if (result.isSuccess) {
+            if (loginResult.isSuccess) {
+                val existingConfig = repository.getServerConfig().firstOrNull()
+                val config = (existingConfig ?: ServerConfigEntity(serverUrl = url)).copy(
+                    serverUrl = url,
+                    username = _uiState.value.username,
+                    encryptedPassword = _uiState.value.password,
+                    isLoggedIn = true
+                )
+                repository.updateServerConfig(config)
                 _uiState.value = _uiState.value.copy(isLoading = false, isLoginSuccessful = true)
             } else {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false, 
-                    error = "Failed to connect to Frigate: ${result.exceptionOrNull()?.message}"
+                    error = loginResult.exceptionOrNull()?.message ?: "Login failed"
                 )
             }
         }

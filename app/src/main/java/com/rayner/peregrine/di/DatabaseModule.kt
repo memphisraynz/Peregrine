@@ -2,6 +2,8 @@ package com.rayner.peregrine.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.rayner.peregrine.data.local.AppDatabase
 import com.rayner.peregrine.data.local.dao.ServerConfigDao
 import dagger.Module
@@ -15,6 +17,13 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
 
+    private val migration1To2 = object : Migration(1, 2) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE server_config ADD COLUMN authCookie TEXT")
+            database.execSQL("ALTER TABLE server_config ADD COLUMN authCookieExpiresAt INTEGER")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
@@ -22,7 +31,9 @@ object DatabaseModule {
             context,
             AppDatabase::class.java,
             "peregrine_db"
-        ).build()
+        )
+            .addMigrations(migration1To2)
+            .build()
     }
 
     @Provides
