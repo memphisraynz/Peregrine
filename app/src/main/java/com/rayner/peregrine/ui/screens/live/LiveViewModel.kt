@@ -16,7 +16,8 @@ data class LiveUiState(
     val cameras: List<Camera> = emptyList(),
     val activeReviews: List<Map<String, Any>> = emptyList(),
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val snapshotTimestamp: Long = System.currentTimeMillis()
 )
 
 @HiltViewModel
@@ -31,6 +32,7 @@ class LiveViewModel @Inject constructor(
 
     init {
         loadData()
+        startSnapshotUpdates()
     }
 
     fun loadData() {
@@ -40,14 +42,34 @@ class LiveViewModel @Inject constructor(
             val camerasResult = repository.getCameras()
             val reviewResult = repository.getReviewItems()
 
+            val activeReviews = reviewResult.getOrDefault(emptyList()).filter { it["end_time"] == null }
+            
             _uiState.value = _uiState.value.copy(
                 isLoading = false,
                 cameras = camerasResult.getOrDefault(emptyList()),
-                activeReviews = reviewResult.getOrDefault(emptyList()).filter { it["end_time"] == null }
+                activeReviews = activeReviews
             )
 
             if (camerasResult.isFailure) {
                 _uiState.value = _uiState.value.copy(error = "Failed to load cameras")
+            }
+        }
+    }
+
+    private fun startSnapshotUpdates() {
+        viewModelScope.launch {
+            while (true) {
+                // Refresh active reviews to check for motion
+                val reviewResult = repository.getReviewItems()
+                val activeReviews = reviewResult.getOrDefault(emptyList()).filter { it["end_time"] == null }
+                
+                _uiState.value = _uiState.value.copy(
+                    activeReviews = activeReviews,
+                    snapshotTimestamp = System.currentTimeMillis()
+                )
+                
+                val hasMotion = activeReviews.isNotEmpty()
+                kotlinx.coroutines.delay(if (hasMotion) 1000L else 5000L)
             }
         }
     }
@@ -80,6 +102,13 @@ class LiveViewModel @Inject constructor(
                     isLive = if (newState) true else it.isLive
                 )
             } else it
+        }
+        _uiState.value = _uiState.value.copy(cameras = updatedCameras)
+    }
+
+    fun togglePlayerType(cameraName: String) {
+        val updatedCameras = _uiState.value.cameras.map {
+            if (it.name == cameraName) it.copy(useHls = !it.useHls) else it
         }
         _uiState.value = _uiState.value.copy(cameras = updatedCameras)
     }

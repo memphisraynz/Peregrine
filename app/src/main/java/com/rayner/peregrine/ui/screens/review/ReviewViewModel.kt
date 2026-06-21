@@ -2,6 +2,7 @@ package com.rayner.peregrine.ui.screens.review
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rayner.peregrine.data.remote.api.ServerUrlManager
 import com.rayner.peregrine.domain.repository.FrigateRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,13 +14,16 @@ import javax.inject.Inject
 data class ReviewUiState(
     val reviewItems: List<Map<String, Any>> = emptyList(),
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val baseUrl: String = ""
 )
 
 @HiltViewModel
 class ReviewViewModel @Inject constructor(
     private val repository: FrigateRepository,
-    val okHttpClient: OkHttpClient
+    private val serverUrlManager: ServerUrlManager,
+    val okHttpClient: OkHttpClient,
+    val imageLoader: coil3.ImageLoader
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReviewUiState())
@@ -31,7 +35,11 @@ class ReviewViewModel @Inject constructor(
 
     fun loadReviewItems() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.value = _uiState.value.copy(
+                isLoading = true, 
+                error = null,
+                baseUrl = serverUrlManager.getUrl()?.removeSuffix("/") ?: ""
+            )
             val result = repository.getReviewItems()
             if (result.isSuccess) {
                 _uiState.value = _uiState.value.copy(

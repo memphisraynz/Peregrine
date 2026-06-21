@@ -13,18 +13,39 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import okhttp3.Cookie
 import okhttp3.CookieJar
+import okhttp3.Dns
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.converter.scalars.ScalarsConverterFactory
+import java.net.InetAddress
+import java.net.UnknownHostException
+import java.security.Security
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
+
+    init {
+        // Disable JVM DNS caching to handle split DNS/network switching
+        Security.setProperty("networkaddress.cache.ttl", "0")
+        Security.setProperty("networkaddress.cache.negative.ttl", "0")
+    }
+
+    private class RobustDns : Dns {
+        override fun lookup(hostname: String): List<InetAddress> {
+            return try {
+                Dns.SYSTEM.lookup(hostname)
+            } catch (e: UnknownHostException) {
+                // If it fails, wait briefly and retry once to handle network transitions
+                Thread.sleep(500)
+                Dns.SYSTEM.lookup(hostname)
+            }
+        }
+    }
 
     @Provides
     @Singleton
@@ -57,13 +78,9 @@ object NetworkModule {
         cookieJar: CookieJar,
         baseUrlInterceptor: DynamicBaseUrlInterceptor
     ): OkHttpClient {
-        val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
-
         return OkHttpClient.Builder()
             .addInterceptor(baseUrlInterceptor)
-            .addInterceptor(loggingInterceptor)
+            .dns(RobustDns())
             .cookieJar(cookieJar)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)

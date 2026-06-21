@@ -53,7 +53,27 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
-            Text(text = "Diagnostics", style = MaterialTheme.typography.titleMedium)
+            Text(text = "Preferences", style = MaterialTheme.typography.titleMedium)
+
+            ListItem(
+                headlineContent = { Text("Default Player Type") },
+                supportingContent = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = uiState.defaultPlayerType == "hls",
+                            onClick = { viewModel.setDefaultPlayerType("hls") },
+                            label = { Text("HLS") }
+                        )
+                        FilterChip(
+                            selected = uiState.defaultPlayerType == "webrtc",
+                            onClick = { viewModel.setDefaultPlayerType("webrtc") },
+                            label = { Text("WebRTC") }
+                        )
+                    }
+                }
+            )
+
+            HorizontalDivider()
 
             ListItem(
                 headlineContent = { Text("View Server Logs") },

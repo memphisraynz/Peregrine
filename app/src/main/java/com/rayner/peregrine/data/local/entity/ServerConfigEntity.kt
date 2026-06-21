@@ -12,5 +12,6 @@ data class ServerConfigEntity(
     val authCookie: String? = null,
     val authCookieExpiresAt: Long? = null,
     val isLoggedIn: Boolean = false,
-    val isActive: Boolean = true
+    val isActive: Boolean = true,
+    val defaultPlayerType: String = "hls" // "webrtc" or "hls"
 )

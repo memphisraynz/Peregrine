@@ -2,6 +2,8 @@ package com.rayner.peregrine.domain.model
 
 data class Camera(
     val name: String,
+    val width: Int = 1920,
+    val height: Int = 1080,
     val detect: Boolean = false,
     val recording: Boolean = false,
     val snapshots: Boolean = false,
@@ -11,5 +13,6 @@ data class Camera(
     val mseUrl: String? = null,
     val isLive: Boolean = false,
     val isMicEnabled: Boolean = false,
-    val isSpeakerEnabled: Boolean = false
+    val isSpeakerEnabled: Boolean = false,
+    val useHls: Boolean = true
 )

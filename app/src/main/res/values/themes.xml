@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
     <style name="Theme.Peregrine" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.Peregrine.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#E3E3E6</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/peregrine_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.Peregrine</item>
+    </style>
 </resources>

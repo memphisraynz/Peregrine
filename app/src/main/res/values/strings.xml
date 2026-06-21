@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Peregrine</string>
+    <string name="camera_microphone_permission_rationale">Microphone access is required for camera talkback.</string>
 </resources>

@@ -1,13 +1,19 @@
 package com.rayner.peregrine.ui.screens.login
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import android.graphics.BitmapFactory
+import com.rayner.peregrine.R
 
 @Composable
 fun LoginScreen(
@@ -22,11 +28,33 @@ fun LoginScreen(
         }
     }
 
+    val context = LocalContext.current
+
     Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        val logoBitmap = remember(context) {
+            BitmapFactory.decodeResource(
+                context.resources,
+                R.mipmap.ic_launcher_round
+            )
+        }
+
+        logoBitmap?.let { bitmap ->
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "Peregrine logo",
+                modifier = Modifier
+                    .size(144.dp)
+                    .padding(bottom = 16.dp),
+                contentScale = ContentScale.Fit
+            )
+        }
+
         Text(text = "Peregrine", style = MaterialTheme.typography.headlineLarge)
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -73,8 +101,8 @@ fun LoginScreen(
         }
 
         Spacer(modifier = Modifier.height(32.dp))
-        
-        TextButton(onClick = { /* ViewModel will handle logging in the next step */ }) {
+
+        TextButton(onClick = { }) {
             Text("Run Connectivity Trace (Check Logcat)")
         }
     }

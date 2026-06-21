@@ -8,12 +8,14 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class SettingsUiState(
     val serverUrl: String = "",
     val username: String = "",
+    val defaultPlayerType: String = "hls",
     val isLoading: Boolean = false
 )
 
@@ -32,12 +34,20 @@ class SettingsViewModel @Inject constructor(
                 if (config != null) {
                     _uiState.value = _uiState.value.copy(
                         serverUrl = config.serverUrl,
-                        username = config.username ?: ""
+                        username = config.username ?: "",
+                        defaultPlayerType = config.defaultPlayerType
                     )
                 } else {
                     _uiState.value = SettingsUiState()
                 }
             }
+        }
+    }
+
+    fun setDefaultPlayerType(type: String) {
+        viewModelScope.launch {
+            val config = repository.getServerConfig().firstOrNull() ?: return@launch
+            repository.updateServerConfig(config.copy(defaultPlayerType = type))
         }
     }
 

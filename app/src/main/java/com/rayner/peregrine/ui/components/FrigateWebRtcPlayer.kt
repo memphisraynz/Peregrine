@@ -1,36 +1,35 @@
 package com.rayner.peregrine.ui.components
 
 import android.content.Context
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Build
+import android.util.Log
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import org.webrtc.AudioSource
-import org.webrtc.AudioTrack
-import org.webrtc.DefaultVideoDecoderFactory
-import org.webrtc.DefaultVideoEncoderFactory
-import org.webrtc.EglBase
-import org.webrtc.IceCandidate
-import org.webrtc.MediaConstraints
-import org.webrtc.PeerConnection
-import org.webrtc.PeerConnectionFactory
-import org.webrtc.SessionDescription
-import org.webrtc.SurfaceViewRenderer
-import org.webrtc.VideoTrack
+import org.webrtc.*
+import org.webrtc.audio.JavaAudioDeviceModule
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 @Composable
 fun FrigateWebRtcPlayer(
@@ -41,11 +40,21 @@ fun FrigateWebRtcPlayer(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val eglBase = remember { EglBase.create() }
+    
+    var isFirstFrameRendered by remember { mutableStateOf(false) }
+    
     val renderer = remember {
         SurfaceViewRenderer(context).apply {
-            init(eglBase.eglBaseContext, null)
+            init(eglBase.eglBaseContext, object : RendererCommon.RendererEvents {
+                override fun onFirstFrameRendered() {
+                    isFirstFrameRendered = true
+                }
+                override fun onFrameResolutionChanged(p0: Int, p1: Int, p2: Int) {}
+            })
             setEnableHardwareScaler(true)
+            setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
         }
     }
 
@@ -53,8 +62,26 @@ fun FrigateWebRtcPlayer(
         WebRtcPeerConnectionHolder(context, eglBase, renderer, okHttpClient)
     }
 
-    LaunchedEffect(signalingUrl) {
-        peerConnectionHolder.start(signalingUrl)
+    var connectionState by remember { mutableStateOf(PeerConnection.IceConnectionState.NEW) }
+    
+    val isLoading = !isFirstFrameRendered
+
+    DisposableEffect(lifecycleOwner, signalingUrl) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isFirstFrameRendered = false
+                peerConnectionHolder.start(signalingUrl) { state ->
+                    connectionState = state
+                }
+            } else if (event == Lifecycle.Event.ON_PAUSE) {
+                peerConnectionHolder.releasePeerConnection()
+                connectionState = PeerConnection.IceConnectionState.DISCONNECTED
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     LaunchedEffect(isMicEnabled) {
@@ -73,20 +100,25 @@ fun FrigateWebRtcPlayer(
         }
     }
 
-    AndroidView(
-        factory = {
-            FrameLayout(context).apply {
-                addView(
-                    renderer,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
+    Box(modifier = modifier.background(Color.Black), contentAlignment = Alignment.Center) {
+        AndroidView(
+            factory = {
+                FrameLayout(context).apply {
+                    addView(
+                        renderer,
+                        FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
                     )
-                )
-            }
-        },
-        modifier = modifier
-    )
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+        if (isLoading) {
+            CircularProgressIndicator(color = Color.White)
+        }
+    }
 }
 
 private class WebRtcPeerConnectionHolder(
@@ -95,84 +127,171 @@ private class WebRtcPeerConnectionHolder(
     private val renderer: SurfaceViewRenderer,
     private val okHttpClient: OkHttpClient
 ) {
+    private val appContext = context.applicationContext
     private val factory: PeerConnectionFactory
     private var peerConnection: PeerConnection? = null
     private var localAudioTrack: AudioTrack? = null
+    private var localAudioSource: AudioSource? = null
     private var remoteAudioTrack: AudioTrack? = null
+    private var isMicEnabled: Boolean = false
+    private var isSpeakerEnabled: Boolean = false
+    private var isMicAdded: Boolean = false
+    private var currentSignalingUrl: String? = null
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     init {
+        val audioDeviceModule = JavaAudioDeviceModule.builder(appContext)
+            .setUseHardwareAcousticEchoCanceler(true)
+            .setUseHardwareNoiseSuppressor(true)
+            .createAudioDeviceModule()
+
         PeerConnectionFactory.initialize(
             PeerConnectionFactory.InitializationOptions.builder(context)
+                .setInjectableLogger(null, Logging.Severity.LS_NONE)
                 .createInitializationOptions()
         )
         factory = PeerConnectionFactory.builder()
+            .setAudioDeviceModule(audioDeviceModule)
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
             .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
             .createPeerConnectionFactory()
     }
 
-    suspend fun start(signalingUrl: String) {
+    fun start(signalingUrl: String, onStateChange: (PeerConnection.IceConnectionState) -> Unit) {
+        scope.launch {
+            doStart(signalingUrl, onStateChange)
+        }
+    }
+
+    private suspend fun doStart(signalingUrl: String, onStateChange: (PeerConnection.IceConnectionState) -> Unit) {
+        this.currentSignalingUrl = signalingUrl
+        this.isMicAdded = false
         releasePeerConnection()
 
-        val rtcConfig = PeerConnection.RTCConfiguration(emptyList())
+        // Prepare AudioManager for WebRTC
+        val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        audioManager.isSpeakerphoneOn = isSpeakerEnabled
+
+        val rtcConfig = PeerConnection.RTCConfiguration(listOf(
+            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()
+        )).apply {
+            sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+            tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.DISABLED
+            bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
+            rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
+        }
+        
         val pc = factory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
             override fun onSignalingChange(newState: PeerConnection.SignalingState?) = Unit
-            override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState?) = Unit
+            override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState?) {
+                newState?.let { onStateChange(it) }
+            }
             override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
             override fun onIceGatheringChange(newState: PeerConnection.IceGatheringState?) = Unit
             override fun onIceCandidate(candidate: IceCandidate?) = Unit
             override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) = Unit
-            override fun onAddStream(stream: org.webrtc.MediaStream?) = Unit
-            override fun onRemoveStream(stream: org.webrtc.MediaStream?) = Unit
-            override fun onDataChannel(dataChannel: org.webrtc.DataChannel?) = Unit
+            override fun onAddStream(stream: MediaStream?) = Unit
+            override fun onRemoveStream(stream: MediaStream?) = Unit
+            override fun onDataChannel(dataChannel: DataChannel?) = Unit
             override fun onRenegotiationNeeded() = Unit
-            override fun onAddTrack(receiver: org.webrtc.RtpReceiver?, mediaStreams: Array<out org.webrtc.MediaStream>?) {
-                val track = receiver?.track()
-                when (track) {
-                    is VideoTrack -> track.addSink(renderer)
-                    is AudioTrack -> {
-                        remoteAudioTrack = track
-                        track.setEnabled(true)
-                    }
-                }
+            override fun onAddTrack(receiver: RtpReceiver?, mediaStreams: Array<out MediaStream>?) {
+                receiver?.track()?.let { handleTrack(it) }
             }
-            override fun onTrack(transceiver: org.webrtc.RtpTransceiver?) {
-                val track = transceiver?.receiver?.track()
-                when (track) {
-                    is VideoTrack -> track.addSink(renderer)
-                    is AudioTrack -> {
-                        remoteAudioTrack = track
-                        track.setEnabled(true)
-                    }
+            override fun onTrack(transceiver: RtpTransceiver?) {
+                transceiver?.receiver?.track()?.let { handleTrack(it) }
+            }
+
+            private fun handleTrack(track: MediaStreamTrack) {
+                if (track is VideoTrack) track.addSink(renderer)
+                if (track is AudioTrack) {
+                    remoteAudioTrack = track
+                    track.setEnabled(isSpeakerEnabled)
                 }
             }
         }) ?: return
 
         peerConnection = pc
 
-        val audioSource: AudioSource = factory.createAudioSource(MediaConstraints())
-        localAudioTrack = factory.createAudioTrack("audio", audioSource).also {
-            pc.addTrack(it)
-        }
+        // Phase 1: Baseline stream (Video + Audio RECV_ONLY)
+        val transceiverInit = RtpTransceiver.RtpTransceiverInit(
+            RtpTransceiver.RtpTransceiverDirection.RECV_ONLY,
+            listOf("stream0")
+        )
+        pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO, transceiverInit)
+        pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO, transceiverInit)
 
-        val constraints = MediaConstraints().apply {
-            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
-        }
-
-        val offer = pc.createOfferAwait(constraints)
+        val offer = pc.createOfferAwait(MediaConstraints())
         pc.setLocalDescriptionAwait(offer)
 
-        val answerSdp = exchangeOffer(signalingUrl, offer.description)
-        pc.setRemoteDescriptionAwait(SessionDescription(SessionDescription.Type.ANSWER, answerSdp))
+        try {
+            val answerSdp = exchangeOffer(signalingUrl, offer.description)
+            pc.setRemoteDescriptionAwait(SessionDescription(SessionDescription.Type.ANSWER, answerSdp))
+            
+            // Phase 3: If mic is already requested, activate it now
+            if (isMicEnabled) {
+                addMicTrack()
+            }
+        } catch (e: Exception) {
+            // Error ignored for reduced noise
+        }
     }
 
     fun setMicEnabled(enabled: Boolean) {
-        localAudioTrack?.setEnabled(enabled)
+        isMicEnabled = enabled
+        // Mic handled separately now
     }
 
     fun setSpeakerEnabled(enabled: Boolean) {
+        isSpeakerEnabled = enabled
         remoteAudioTrack?.setEnabled(enabled)
+        val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        
+        audioManager.isSpeakerphoneOn = enabled
+        
+        if (enabled) {
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val devices = audioManager.availableCommunicationDevices
+                val speaker = devices.find { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                if (speaker != null) {
+                    audioManager.setCommunicationDevice(speaker)
+                }
+            }
+        } else {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                audioManager.clearCommunicationDevice()
+            }
+            // We keep MODE_IN_COMMUNICATION while the call is active to avoid routing issues,
+            // but we could switch back to NORMAL if preferred.
+        }
+    }
+
+    private suspend fun addMicTrack() {
+        val pc = peerConnection ?: return
+        val signalingUrl = currentSignalingUrl ?: return
+        if (isMicAdded) return
+
+        localAudioSource = factory.createAudioSource(MediaConstraints())
+        localAudioTrack = factory.createAudioTrack("audio_local", localAudioSource).also {
+            it.setEnabled(false) // Handle mic separately via FrigateWebRtcMic
+            pc.addTrack(it, listOf("stream0"))
+        }
+        isMicAdded = true
+        
+        renegotiate(signalingUrl)
+    }
+
+    private suspend fun renegotiate(signalingUrl: String) {
+        val pc = peerConnection ?: return
+        try {
+            val offer = pc.createOfferAwait(MediaConstraints())
+            pc.setLocalDescriptionAwait(offer)
+            val answerSdp = exchangeOffer(signalingUrl, offer.description)
+            pc.setRemoteDescriptionAwait(SessionDescription(SessionDescription.Type.ANSWER, answerSdp))
+        } catch (e: Exception) {
+            // Error ignored for reduced noise
+        }
     }
 
     private suspend fun exchangeOffer(signalingUrl: String, sdp: String): String = withContext(Dispatchers.IO) {
@@ -188,6 +307,7 @@ private class WebRtcPeerConnectionHolder(
             .build()
 
         okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw Exception("Signaling failed: ${response.code}")
             val body = response.body?.string().orEmpty()
             val json = JSONObject(body)
             json.getString("sdp")
@@ -197,52 +317,69 @@ private class WebRtcPeerConnectionHolder(
     fun release() {
         releasePeerConnection()
         factory.dispose()
+        scope.cancel()
     }
 
-    private fun releasePeerConnection() {
+    fun releasePeerConnection() {
         peerConnection?.close()
         peerConnection?.dispose()
         peerConnection = null
         localAudioTrack = null
+        localAudioSource?.dispose()
+        localAudioSource = null
         remoteAudioTrack = null
+
+        val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.mode = AudioManager.MODE_NORMAL
+        audioManager.isSpeakerphoneOn = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            audioManager.clearCommunicationDevice()
+        }
     }
 }
 
 private suspend fun PeerConnection.createOfferAwait(
     constraints: MediaConstraints
 ): SessionDescription = suspendCancellableCoroutine { continuation ->
-    createOffer(object : org.webrtc.SdpObserver {
-        override fun onCreateSuccess(sessionDescription: SessionDescription?) {
-            continuation.resume(sessionDescription!!)
+    createOffer(object : SdpObserver {
+        override fun onCreateSuccess(sdp: SessionDescription?) {
+            if (sdp != null) continuation.resume(sdp)
+            else continuation.resumeWithException(RuntimeException("Created offer was null"))
         }
         override fun onSetSuccess() = Unit
-        override fun onCreateFailure(error: String?) = Unit
+        override fun onCreateFailure(error: String?) {
+            continuation.resumeWithException(RuntimeException("Create offer failed: $error"))
+        }
         override fun onSetFailure(error: String?) = Unit
     }, constraints)
 }
 
 private suspend fun PeerConnection.setLocalDescriptionAwait(
-    sessionDescription: SessionDescription
+    sdp: SessionDescription
 ) = suspendCancellableCoroutine<Unit> { continuation ->
-    setLocalDescription(object : org.webrtc.SdpObserver {
-        override fun onCreateSuccess(sessionDescription: SessionDescription?) = Unit
+    setLocalDescription(object : SdpObserver {
+        override fun onCreateSuccess(sdp: SessionDescription?) = Unit
         override fun onSetSuccess() {
             continuation.resume(Unit)
         }
         override fun onCreateFailure(error: String?) = Unit
-        override fun onSetFailure(error: String?) = Unit
-    }, sessionDescription)
+        override fun onSetFailure(error: String?) {
+            continuation.resumeWithException(RuntimeException("Set local description failed: $error"))
+        }
+    }, sdp)
 }
 
 private suspend fun PeerConnection.setRemoteDescriptionAwait(
-    sessionDescription: SessionDescription
+    sdp: SessionDescription
 ) = suspendCancellableCoroutine<Unit> { continuation ->
-    setRemoteDescription(object : org.webrtc.SdpObserver {
+    setRemoteDescription(object : SdpObserver {
         override fun onCreateSuccess(sessionDescription: SessionDescription?) = Unit
         override fun onSetSuccess() {
             continuation.resume(Unit)
         }
         override fun onCreateFailure(error: String?) = Unit
-        override fun onSetFailure(error: String?) = Unit
-    }, sessionDescription)
+        override fun onSetFailure(error: String?) {
+            continuation.resumeWithException(RuntimeException("Set remote description failed: $error"))
+        }
+    }, sdp)
 }

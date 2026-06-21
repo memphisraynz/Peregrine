@@ -1,28 +1,99 @@
 package com.rayner.peregrine.ui.components
 
+import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
+import coil3.compose.AsyncImage
 import okhttp3.OkHttpClient
 
+@OptIn(UnstableApi::class)
 @Composable
 fun LiveVideoPlayer(
     url: String,
     isMuted: Boolean,
+    placeholderUrl: String? = null,
     okHttpClient: OkHttpClient,
+    imageLoader: coil3.ImageLoader,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    var isPlayerReady by remember { mutableStateOf(false) }
+    
+    val exoPlayer = remember {
+        val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .build().apply {
+                repeatMode = Player.REPEAT_MODE_ONE
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_READY) {
+                            isPlayerReady = true
+                        }
+                    }
+                })
+            }
+    }
+
+    LaunchedEffect(url) {
+        val mediaItem = MediaItem.fromUri(url)
+        exoPlayer.setMediaItem(mediaItem)
+        exoPlayer.prepare()
+        exoPlayer.playWhenReady = true
+    }
+
+    LaunchedEffect(isMuted) {
+        exoPlayer.volume = if (isMuted) 0f else 1f
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            exoPlayer.release()
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.TopCenter // Pins the actual video surface to the top
     ) {
-        CircularProgressIndicator()
+        AndroidView(
+            factory = {
+                PlayerView(context).apply {
+                    player = exoPlayer
+                    useController = true
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+        
+        if (!isPlayerReady && placeholderUrl != null) {
+            AsyncImage(
+                model = placeholderUrl,
+                imageLoader = imageLoader,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+                alignment = Alignment.TopCenter
+            )
+        }
     }
 }

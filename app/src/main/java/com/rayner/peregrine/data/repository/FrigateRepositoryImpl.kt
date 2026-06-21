@@ -44,6 +44,7 @@ class FrigateRepositoryImpl @Inject constructor(
 
     suspend fun restorePersistedAuthCookie() {
         val config = serverConfigDao.getServerConfig().firstOrNull() ?: return
+        serverUrlManager.setUrl(config.serverUrl)
         val baseUrl = config.serverUrl.toHttpUrlOrNull() ?: return
         val tokenCookie = config.authCookie ?: return
         val expiresAt = config.authCookieExpiresAt ?: return
@@ -110,7 +111,6 @@ class FrigateRepositoryImpl @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            Log.e("FrigateRepo", "Login error", e)
             Result.failure(e)
         }
     }
@@ -136,6 +136,9 @@ class FrigateRepositoryImpl @Inject constructor(
 
     override suspend fun getCameras(): Result<List<Camera>> = withContext(Dispatchers.IO) {
         try {
+            val configEntity = serverConfigDao.getServerConfig().firstOrNull()
+            val defaultUseHls = configEntity?.defaultPlayerType == "hls"
+            
             val baseUrl = getBaseUrl()
             val config = apiService.getConfig()
             val camerasMap = config["cameras"] as? Map<String, Any> ?: emptyMap()
@@ -144,18 +147,23 @@ class FrigateRepositoryImpl @Inject constructor(
                 val cameraConfig = cameraConfigAny as? Map<*, *> ?: return@mapNotNull null
                 val live = cameraConfig["live"] as? Map<*, *>
                 val streams = live?.get("streams") as? Map<*, *>
-                val preferredStream = when {
-                    streams?.containsKey("SD") == true -> streams["SD"] as? String
-                    streams?.containsKey("HD") == true -> streams["HD"] as? String
-                    else -> null
-                }
+                
+                // Frigate logic: Use first stream in 'live.streams', or fallback to camera name
+                val preferredStream = streams?.values?.firstOrNull() as? String ?: cameraName
+
+                val detect = cameraConfig["detect"] as? Map<*, *>
+                val width = (detect?.get("width") as? Number)?.toInt() ?: 1920
+                val height = (detect?.get("height") as? Number)?.toInt() ?: 1080
 
                 Camera(
                     name = cameraName,
-                    mjpegUrl = "$baseUrl/api/go2rtc/streams/${preferredStream ?: cameraName}",
+                    width = width,
+                    height = height,
+                    mjpegUrl = "$baseUrl/api/go2rtc/streams/$preferredStream",
                     snapshotUrl = "$baseUrl/api/$cameraName/latest.jpg",
-                    hlsUrl = preferredStream?.let { "$baseUrl/live/webrtc/api/stream.m3u8?src=$it" },
-                    mseUrl = preferredStream?.let { "$baseUrl/live/mse/api/ws?src=$it" }
+                    hlsUrl = "$baseUrl/api/go2rtc/api/stream.m3u8?src=$preferredStream",
+                    mseUrl = "$baseUrl/live/mse/api/ws?src=$preferredStream",
+                    useHls = defaultUseHls
                 )
             }
             Result.success(cameras)

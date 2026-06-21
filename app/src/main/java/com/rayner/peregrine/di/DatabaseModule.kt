@@ -24,6 +24,12 @@ object DatabaseModule {
         }
     }
 
+    private val migration2To3 = object : Migration(2, 3) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE server_config ADD COLUMN defaultPlayerType TEXT NOT NULL DEFAULT 'hls'")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
@@ -32,7 +38,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "peregrine_db"
         )
-            .addMigrations(migration1To2)
+            .addMigrations(migration1To2, migration2To3)
             .build()
     }
 

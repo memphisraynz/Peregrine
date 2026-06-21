@@ -1,19 +1,28 @@
 package com.rayner.peregrine.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.rayner.peregrine.R
+import com.rayner.peregrine.domain.repository.FrigateRepository
 import com.rayner.peregrine.ui.navigation.PeregrineNavGraph
 import com.rayner.peregrine.ui.navigation.Screen
 import com.rayner.peregrine.ui.navigation.bottomNavItems
-import com.rayner.peregrine.domain.repository.FrigateRepository
 import kotlinx.coroutines.flow.firstOrNull
 
 @Composable
@@ -21,13 +30,65 @@ fun MainAppScaffold(repository: FrigateRepository) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    val context = LocalContext.current
 
-    val startDestination by produceState(initialValue = Screen.Login.route, repository) {
+    var hasMicPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    var showMicPermissionRationale by remember { mutableStateOf(false) }
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasMicPermission = granted
+        showMicPermissionRationale = !granted
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasMicPermission) {
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    var startDestination by remember { mutableStateOf<String?>(null) }
+    
+    LaunchedEffect(repository) {
+        // Wait for config to be ready to avoid login screen flash
         val config = repository.getServerConfig().firstOrNull()
-        value = if (config?.isLoggedIn == true) Screen.Live.route else Screen.Login.route
+        startDestination = if (config?.isLoggedIn == true) Screen.Live.route else Screen.Login.route
+    }
+
+    if (startDestination == null) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
     }
 
     val showBottomBar = bottomNavItems.any { it.route == currentDestination?.route }
+
+    if (showMicPermissionRationale) {
+        AlertDialog(
+            onDismissRequest = { showMicPermissionRationale = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    showMicPermissionRationale = false
+                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                }) {
+                    Text("Allow")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMicPermissionRationale = false }) {
+                    Text("Not now")
+                }
+            },
+            title = { Text("Microphone permission") },
+            text = { Text(stringResource(R.string.camera_microphone_permission_rationale)) }
+        )
+    }
 
     Scaffold(
         bottomBar = {
@@ -57,7 +118,7 @@ fun MainAppScaffold(repository: FrigateRepository) {
             navController = navController,
             repository = repository,
             modifier = Modifier.padding(innerPadding),
-            startDestination = startDestination
+            startDestination = startDestination!!
         )
     }
 }
