@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Peregrine — Camera detail (Material You, dark)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.7.0/dist/tabler-icons.min.css">
+<style>
+:root{--font-sans:"Roboto","Segoe UI",system-ui,sans-serif;--color-background-secondary:#1b1b1f;--border-radius-lg:16px}
+*{box-sizing:border-box}
+body{margin:0;background:#0c0c0f;display:flex;justify-content:center;align-items:flex-start;padding:32px 16px;font-family:var(--font-sans)}
+.lv-wrap{background:var(--color-background-secondary);border-radius:var(--border-radius-lg);padding:24px;display:flex;justify-content:center}
+.lv-phone{width:322px;background:#000;border-radius:42px;padding:8px}
+.lv-screen{display:flex;flex-direction:column;height:684px;--surface:#141218;--sc:#211F26;--sch:#2B2930;--on:#E6E0E9;--onv:#CAC4D0;--pri:#D0BCFF;--secc:#4A4458;--osecc:#E8DEF8;--ol:#49454F;background:var(--surface);border-radius:34px;overflow:hidden;color:var(--on);font-family:var(--font-sans)}
+.lv-status{display:flex;align-items:center;justify-content:space-between;padding:8px 20px 4px;font-size:13px;font-weight:500}
+.lv-status .r{display:flex;gap:6px;font-size:14px}
+.cd-bar{display:flex;align-items:center;gap:4px;padding:6px 8px 8px 6px}
+.cd-bar .ttl{flex:1;font-size:20px;font-weight:500;color:var(--on);padding-left:2px}
+.cd-bib{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--onv);font-size:22px;background:none;border:none;cursor:pointer}
+.cd-video{position:relative;height:208px;background:#241d1a;overflow:hidden;flex:0 0 auto}
+.cd-scene{position:absolute;inset:0}
+.cd-scan{position:absolute;top:0;left:-40%;width:30%;height:100%;background:rgba(255,255,255,.05);transform:skewX(-12deg);animation:lvscan 5s linear infinite}
+@keyframes lvscan{0%{left:-40%}60%,100%{left:130%}}
+.cd-live{position:absolute;left:12px;top:12px;display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.45);padding:4px 10px;border-radius:8px;font-size:12px;font-weight:500;color:#fff;letter-spacing:.4px}
+.cd-livedot{width:8px;height:8px;border-radius:50%;background:#FF5449;animation:cdblink 1.6s ease-in-out infinite}
+@keyframes cdblink{0%,100%{opacity:1}50%{opacity:.3}}
+.cd-ts{position:absolute;left:12px;bottom:12px;background:rgba(0,0,0,.45);color:#fff;font-size:12px;font-weight:500;padding:4px 10px;border-radius:8px}
+.cd-box{position:absolute;left:36%;top:22%;width:30%;height:54%;border:2px solid var(--pri);border-radius:4px}
+.cd-box span{position:absolute;top:-19px;left:-2px;background:var(--pri);color:#381E72;font-size:10px;font-weight:500;padding:1px 6px;border-radius:4px}
+.cd-fabs{display:flex;justify-content:flex-end;gap:14px;padding:14px 16px 0;flex:0 0 auto}
+.cd-fab{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:20px;border:none;cursor:pointer}
+.cd-fab.mic{background:#4F378B;color:#EADDFF}
+.cd-fab.spk{background:#EFB8C8;color:#492532}
+.cd-spacer{flex:1 1 auto}
+.cd-shead{display:flex;align-items:center;gap:8px;padding:0 16px 8px;flex:0 0 auto}
+.cd-shead h3{font-size:15px;font-weight:500;margin:0}
+.cd-link{margin-left:auto;display:flex;align-items:center;gap:2px;color:var(--pri);font-size:13px;font-weight:500;cursor:pointer}
+.lv-car{display:flex;gap:10px;overflow-x:auto;padding:0 16px 22px;scrollbar-width:none;flex:0 0 auto}
+.lv-car::-webkit-scrollbar{display:none}
+.lv-acard{flex:0 0 auto;width:124px;background:var(--sch);border-radius:16px;overflow:hidden}
+.lv-athumb{position:relative;height:80px}
+.lv-acat{position:absolute;left:7px;top:7px;font-size:11px;font-weight:500;padding:3px 9px;border-radius:7px;display:flex;align-items:center;gap:4px}
+.lv-ameta{display:flex;align-items:center;justify-content:space-between;padding:7px 10px}
+.lv-acam{font-size:12px;font-weight:500;color:var(--on)}
+.lv-atime{font-size:11px;color:var(--onv)}
+.cat-person{background:#4F378B;color:#EADDFF}
+.cat-vehicle{background:#234B6E;color:#CFE5FF}
+</style>
+</head>
+<body>
+<div class="lv-wrap">
+<div class="lv-phone">
+<div class="lv-screen">
+
+  <div class="lv-status">
+    <span>9:41</span>
+    <span class="r"><i class="ti ti-antenna-bars-4" aria-hidden="true"></i><i class="ti ti-wifi" aria-hidden="true"></i><i class="ti ti-battery-3" aria-hidden="true"></i></span>
+  </div>
+
+  <div class="cd-bar">
+    <button class="cd-bib" aria-label="Back"><i class="ti ti-arrow-left" aria-hidden="true"></i></button>
+    <span class="ttl">Front door</span>
+    <button class="cd-bib" aria-label="Camera settings"><i class="ti ti-settings" aria-hidden="true"></i></button>
+    <button class="cd-bib" aria-label="More options"><i class="ti ti-dots-vertical" aria-hidden="true"></i></button>
+  </div>
+
+  <div class="cd-video">
+    <div class="cd-scene" style="background:#241d1a">
+      <div style="position:absolute;inset:0 0 38% 0;background:#2f2622"></div>
+      <div style="position:absolute;left:30%;top:14%;width:40%;height:62%;background:#3a2e27;border-radius:3px"></div>
+      <div style="position:absolute;left:14%;top:8%;width:20px;height:20px;border-radius:50%;background:#7a5a32"></div>
+      <div style="position:absolute;left:39%;top:30%;width:24px;height:54px;background:#4a3b32;border-radius:12px 12px 0 0"></div>
+      <div style="position:absolute;left:42%;top:23%;width:18px;height:18px;border-radius:50%;background:#4a3b32"></div>
+    </div>
+    <div class="cd-scan"></div>
+    <span class="cd-live"><span class="cd-livedot"></span>LIVE</span>
+    <div class="cd-box"><span>person 87%</span></div>
+    <span class="cd-ts">Mon 9:41:07</span>
+  </div>
+
+  <div class="cd-fabs">
+    <button class="cd-fab spk" aria-label="Listening to camera audio" aria-pressed="true"><i class="ti ti-volume" aria-hidden="true"></i></button>
+    <button class="cd-fab mic" aria-label="Talk through camera" aria-pressed="false"><i class="ti ti-microphone" aria-hidden="true"></i></button>
+  </div>
+
+  <div class="cd-spacer"></div>
+
+  <div class="cd-shead">
+    <h3>Recent activity</h3>
+    <span class="cd-link">See all<i class="ti ti-chevron-right" style="font-size:16px" aria-hidden="true"></i></span>
+  </div>
+
+  <div class="lv-car">
+    <div class="lv-acard">
+      <div class="lv-athumb" style="background:#2f2622">
+        <div style="position:absolute;left:38%;top:30%;width:18px;height:40px;background:#4a3b32;border-radius:9px 9px 0 0"></div>
+        <div style="position:absolute;left:41%;top:25%;width:13px;height:13px;border-radius:50%;background:#4a3b32"></div>
+        <span class="lv-acat cat-person"><i class="ti ti-user" style="font-size:13px" aria-hidden="true"></i>Person</span>
+      </div>
+      <div class="lv-ameta"><span class="lv-acam">Now</span><span class="lv-atime">2m</span></div>
+    </div>
+    <div class="lv-acard">
+      <div class="lv-athumb" style="background:#2a221d">
+        <div style="position:absolute;left:38%;top:30%;width:18px;height:40px;background:#473a31;border-radius:9px 9px 0 0"></div>
+        <div style="position:absolute;left:41%;top:25%;width:13px;height:13px;border-radius:50%;background:#473a31"></div>
+        <span class="lv-acat cat-person"><i class="ti ti-user" style="font-size:13px" aria-hidden="true"></i>Person</span>
+      </div>
+      <div class="lv-ameta"><span class="lv-acam">Earlier</span><span class="lv-atime">1h</span></div>
+    </div>
+    <div class="lv-acard">
+      <div class="lv-athumb" style="background:#26262a">
+        <div style="position:absolute;left:24%;top:48%;width:52%;height:32%;background:#3a3a40;border-radius:10px 10px 4px 4px"></div>
+        <div style="position:absolute;left:30%;top:50%;width:40%;height:13%;background:#4d6b78;border-radius:6px"></div>
+        <span class="lv-acat cat-vehicle"><i class="ti ti-car" style="font-size:13px" aria-hidden="true"></i>Car</span>
+      </div>
+      <div class="lv-ameta"><span class="lv-acam">Earlier</span><span class="lv-atime">3h</span></div>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+</body>
+</html>
