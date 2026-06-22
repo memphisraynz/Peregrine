@@ -2,44 +2,28 @@ package com.rayner.peregrine.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Light colors
-val Primary = Color(0xFF0061A4)
-val OnPrimary = Color(0xFFFFFFFF)
-val PrimaryContainer = Color(0xFFD1E4FF)
-val OnPrimaryContainer = Color(0xFF001D36)
+// Peregrine Dark Color Palette
+val Surface = Color(0xFF141218)
+val SurfaceContainer = Color(0xFF211F26)
+val SurfaceContainerHigh = Color(0xFF2B2930)
+val OnSurface = Color(0xFFE6E0E9)
+val OnSurfaceVariant = Color(0xFFCAC4D0)
+val Primary = Color(0xFFD0BCFF)
+val OnPrimary = Color(0xFF381E72)
+val SecondaryContainer = Color(0xFF4A4458)
+val OnSecondaryContainer = Color(0xFFE8DEF8)
+val Outline = Color(0xFF49454F)
+val OutlineVariant = Color(0xFF49454F)
 
-val Secondary = Color(0xFF535F70)
-val OnSecondary = Color(0xFFFFFFFF)
-val SecondaryContainer = Color(0xFFD7E3F7)
-val OnSecondaryContainer = Color(0xFF101C2B)
+// Functional pops
+val AlertBadgeBg = Color(0xFFFFB4AB)
+val AlertBadgeText = Color(0xFF690005)
+val LiveDot = Color(0xFFFF5449)
 
-val Tertiary = Color(0xFF6B5778)
-val OnTertiary = Color(0xFFFFFFFF)
-val TertiaryContainer = Color(0xFFF2DAFF)
-val OnTertiaryContainer = Color(0xFF251431)
-
-val Background = Color(0xFFFDFCFF)
-val OnBackground = Color(0xFF1A1C1E)
-val Surface = Color(0xFFFDFCFF)
-val OnSurface = Color(0xFF1A1C1E)
-
-// Dark colors
-val PrimaryDark = Color(0xFF9ECAFF)
-val OnPrimaryDark = Color(0xFF003258)
-val PrimaryContainerDark = Color(0xFF00497D)
-val OnPrimaryContainerDark = Color(0xFFD1E4FF)
-
-val SecondaryDark = Color(0xFFBBC7DB)
-val OnSecondaryDark = Color(0xFF253140)
-val SecondaryContainerDark = Color(0xFF3B4858)
-val OnSecondaryContainerDark = Color(0xFFD7E3F7)
-
-val TertiaryDark = Color(0xFFD6BEE4)
-val OnTertiaryDark = Color(0xFF3B2948)
-val TertiaryContainerDark = Color(0xFF523F5F)
-val OnTertiaryContainerDark = Color(0xFFF2DAFF)
-
-val BackgroundDark = Color(0xFF1A1C1E)
-val OnBackgroundDark = Color(0xFFE2E2E6)
-val SurfaceDark = Color(0xFF1A1C1E)
-val OnSurfaceDark = Color(0xFFE2E2E6)
+// Custom detection palette
+object DetectionColors {
+    data class Pair(val container: Color, val onContainer: Color, val bright: Color, val onBright: Color)
+    val Person  = Pair(Color(0xFF4F378B), Color(0xFFEADDFF), Color(0xFFD0BCFF), Color(0xFF381E72))
+    val Vehicle = Pair(Color(0xFF234B6E), Color(0xFFCFE5FF), Color(0xFFA6CBFF), Color(0xFF0A2A4D))
+    val Animal  = Pair(Color(0xFF2E4B33), Color(0xFFBCEFBE), Color(0xFF9BE0A0), Color(0xFF0A3311))
+}

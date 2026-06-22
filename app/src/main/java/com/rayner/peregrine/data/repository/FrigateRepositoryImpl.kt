@@ -1,7 +1,12 @@
 package com.rayner.peregrine.data.repository
 
-import android.util.Log
+import com.rayner.peregrine.data.local.dao.CameraDao
+import com.rayner.peregrine.data.local.dao.ExploreDao
+import com.rayner.peregrine.data.local.dao.ReviewDao
 import com.rayner.peregrine.data.local.dao.ServerConfigDao
+import com.rayner.peregrine.data.local.entity.CameraEntity
+import com.rayner.peregrine.data.local.entity.ExploreEventEntity
+import com.rayner.peregrine.data.local.entity.ReviewItemEntity
 import com.rayner.peregrine.data.local.entity.ServerConfigEntity
 import com.rayner.peregrine.data.remote.api.FrigateApiService
 import com.rayner.peregrine.domain.model.Camera
@@ -25,6 +30,9 @@ import javax.inject.Singleton
 class FrigateRepositoryImpl @Inject constructor(
     private val apiService: FrigateApiService,
     private val serverConfigDao: ServerConfigDao,
+    private val reviewDao: ReviewDao,
+    private val exploreDao: ExploreDao,
+    private val cameraDao: CameraDao,
     private val okHttpClient: OkHttpClient,
     private val cookieJar: CookieJar,
     private val serverUrlManager: com.rayner.peregrine.data.remote.api.ServerUrlManager
@@ -40,6 +48,9 @@ class FrigateRepositoryImpl @Inject constructor(
 
     override suspend fun clearServerConfig() {
         serverConfigDao.clearConfig()
+        reviewDao.clearAll()
+        exploreDao.clearAll()
+        cameraDao.clearAll()
     }
 
     suspend fun restorePersistedAuthCookie() {
@@ -123,6 +134,92 @@ class FrigateRepositoryImpl @Inject constructor(
                 if (r.isSuccessful) Result.success(r.body?.string() ?: "")
                 else Result.failure(Exception("HTTP ${r.code}"))
             }
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    override fun getReviewItemsFlow(): Flow<List<ReviewItemEntity>> = reviewDao.getReviewItems()
+
+    override suspend fun refreshReviewItems(): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val items = apiService.getReviewItems()
+            val entities = items.map { item ->
+                val data = item["data"] as? Map<*, *>
+                val objects = data?.get("objects") as? List<*>
+                ReviewItemEntity(
+                    id = item["id"] as? String ?: "",
+                    camera = item["camera"] as? String ?: "",
+                    severity = item["severity"] as? String ?: "",
+                    startTime = (item["start_time"] as? Number)?.toDouble() ?: 0.0,
+                    endTime = (item["end_time"] as? Number)?.toDouble(),
+                    thumbPath = item["thumb_path"] as? String ?: "",
+                    hasBeenReviewed = when (val h = item["has_been_reviewed"]) {
+                        is Boolean -> h
+                        is Number -> h.toInt() != 0
+                        else -> true
+                    },
+                    primaryLabel = objects?.firstOrNull()?.toString()
+                )
+            }
+            reviewDao.insertReviewItems(entities)
+            Result.success(Unit)
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    override fun getExploreEventsFlow(): Flow<List<ExploreEventEntity>> = exploreDao.getExploreEvents()
+
+    override suspend fun refreshExploreEvents(): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val events = apiService.getEvents()
+            val baseUrl = getBaseUrl()
+            val entities = events.map { event ->
+                val id = event["id"] as? String ?: ""
+                ExploreEventEntity(
+                    id = id,
+                    camera = event["camera"] as? String ?: "",
+                    label = event["label"] as? String ?: "",
+                    startTime = (event["start_time"] as? Number)?.toDouble() ?: 0.0,
+                    thumbUrl = "$baseUrl/api/events/$id/thumbnail.jpg"
+                )
+            }
+            exploreDao.insertExploreEvents(entities)
+            Result.success(Unit)
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    override fun getCamerasFlow(): Flow<List<CameraEntity>> = cameraDao.getCameras()
+
+    override suspend fun refreshCameras(): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val configEntity = serverConfigDao.getServerConfig().firstOrNull()
+            val defaultUseHls = configEntity?.defaultPlayerType == "hls"
+            
+            val baseUrl = getBaseUrl()
+            val config = apiService.getConfig()
+            val camerasMap = config["cameras"] as? Map<String, Any> ?: emptyMap()
+
+            val entities = camerasMap.mapNotNull { (cameraName, cameraConfigAny) ->
+                val cameraConfig = cameraConfigAny as? Map<*, *> ?: return@mapNotNull null
+                val live = cameraConfig["live"] as? Map<*, *>
+                val streams = live?.get("streams") as? Map<*, *>
+                val preferredStream = streams?.values?.firstOrNull() as? String ?: cameraName
+
+                val detect = cameraConfig["detect"] as? Map<*, *>
+                val width = (detect?.get("width") as? Number)?.toInt() ?: 1920
+                val height = (detect?.get("height") as? Number)?.toInt() ?: 1080
+
+                CameraEntity(
+                    name = cameraName,
+                    width = width,
+                    height = height,
+                    mjpegUrl = "$baseUrl/api/go2rtc/streams/$preferredStream",
+                    snapshotUrl = "$baseUrl/api/$cameraName/latest.jpg",
+                    hlsUrl = "$baseUrl/api/go2rtc/api/stream.m3u8?src=$preferredStream",
+                    mseUrl = "$baseUrl/live/mse/api/ws?src=$preferredStream",
+                    useHls = defaultUseHls
+                )
+            }
+            cameraDao.insertCameras(entities)
+            Result.success(Unit)
         } catch (e: Exception) { Result.failure(e) }
     }
 

@@ -3,113 +3,160 @@ package com.rayner.peregrine.ui.screens.live
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import coil3.ImageLoader
+import com.rayner.peregrine.data.local.entity.ReviewItemEntity
+import com.rayner.peregrine.data.remote.api.ServerUrlManager
 import com.rayner.peregrine.domain.model.Camera
 import com.rayner.peregrine.domain.repository.FrigateRepository
 import okhttp3.OkHttpClient
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class LiveUiState(
     val cameras: List<Camera> = emptyList(),
-    val activeReviews: List<Map<String, Any>> = emptyList(),
+    val activeReviews: List<ReviewItemEntity> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
-    val snapshotTimestamp: Long = System.currentTimeMillis()
+    val snapshotTimestamp: Long = System.currentTimeMillis(),
+    val baseUrl: String = ""
 )
 
 @HiltViewModel
 class LiveViewModel @Inject constructor(
     private val repository: FrigateRepository,
+    private val serverUrlManager: ServerUrlManager,
     val imageLoader: ImageLoader,
     val okHttpClient: OkHttpClient
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(LiveUiState())
-    val uiState = _uiState.asStateFlow()
+    private val _isLoading = MutableStateFlow(false)
+    private val _error = MutableStateFlow<String?>(null)
+    private val _snapshotTimestamp = MutableStateFlow(System.currentTimeMillis())
+    private val _cameraUiStates = MutableStateFlow<Map<String, CameraUiState>>(emptyMap())
+
+    data class CameraUiState(
+        val isLive: Boolean = false,
+        val isMicEnabled: Boolean = false,
+        val isSpeakerEnabled: Boolean = false,
+        val useHls: Boolean? = null
+    )
+
+    val uiState: StateFlow<LiveUiState> = combine(
+        repository.getCamerasFlow(),
+        repository.getReviewItemsFlow(),
+        _isLoading,
+        _error,
+        combine(_snapshotTimestamp, serverUrlManager.currentUrl, _cameraUiStates) { ts, url, uiStates -> 
+            Triple(ts, url, uiStates)
+        }
+    ) { entities, reviews, loading, error, extra ->
+        val (ts, url, uiStates) = extra
+        val cameras = entities.map { entity ->
+            val ui = uiStates[entity.name] ?: CameraUiState()
+            Camera(
+                name = entity.name,
+                width = entity.width,
+                height = entity.height,
+                mjpegUrl = entity.mjpegUrl,
+                snapshotUrl = entity.snapshotUrl,
+                hlsUrl = entity.hlsUrl,
+                mseUrl = entity.mseUrl,
+                isLive = ui.isLive,
+                isMicEnabled = ui.isMicEnabled,
+                isSpeakerEnabled = ui.isSpeakerEnabled,
+                useHls = ui.useHls ?: entity.useHls
+            )
+        }
+        val active = reviews.filter { it.endTime == null }
+        LiveUiState(
+            cameras = cameras,
+            activeReviews = active,
+            isLoading = loading,
+            error = error,
+            snapshotTimestamp = ts,
+            baseUrl = url?.removeSuffix("/") ?: ""
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LiveUiState())
 
     init {
         loadData()
         startSnapshotUpdates()
+        observeConfig()
+    }
+
+    private fun observeConfig() {
+        viewModelScope.launch {
+            repository.getServerConfig().collectLatest {
+                loadData()
+            }
+        }
     }
 
     fun loadData() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _isLoading.value = true
+            _error.value = null
 
-            val camerasResult = repository.getCameras()
-            val reviewResult = repository.getReviewItems()
+            val result = repository.refreshCameras()
+            repository.refreshReviewItems()
 
-            val activeReviews = reviewResult.getOrDefault(emptyList()).filter { it["end_time"] == null }
-            
-            _uiState.value = _uiState.value.copy(
-                isLoading = false,
-                cameras = camerasResult.getOrDefault(emptyList()),
-                activeReviews = activeReviews
-            )
-
-            if (camerasResult.isFailure) {
-                _uiState.value = _uiState.value.copy(error = "Failed to load cameras")
+            if (result.isFailure && uiState.value.cameras.isEmpty()) {
+                _error.value = "Failed to load cameras"
             }
+            _isLoading.value = false
         }
     }
 
     private fun startSnapshotUpdates() {
         viewModelScope.launch {
             while (true) {
-                // Refresh active reviews to check for motion
-                val reviewResult = repository.getReviewItems()
-                val activeReviews = reviewResult.getOrDefault(emptyList()).filter { it["end_time"] == null }
+                repository.refreshReviewItems()
+                _snapshotTimestamp.value = System.currentTimeMillis()
                 
-                _uiState.value = _uiState.value.copy(
-                    activeReviews = activeReviews,
-                    snapshotTimestamp = System.currentTimeMillis()
-                )
-                
-                val hasMotion = activeReviews.isNotEmpty()
+                val hasMotion = uiState.value.activeReviews.isNotEmpty()
                 kotlinx.coroutines.delay(if (hasMotion) 1000L else 5000L)
             }
         }
     }
 
     fun setLive(cameraName: String, isLive: Boolean) {
-        val updatedCameras = _uiState.value.cameras.map {
-            if (it.name == cameraName) it.copy(isLive = isLive) else it
+        _cameraUiStates.update { current ->
+            val old = current[cameraName] ?: CameraUiState()
+            current + (cameraName to old.copy(isLive = isLive))
         }
-        _uiState.value = _uiState.value.copy(cameras = updatedCameras)
     }
 
     fun toggleLive(cameraName: String) {
-        val camera = _uiState.value.cameras.firstOrNull { it.name == cameraName } ?: return
-        setLive(cameraName, !camera.isLive)
+        _cameraUiStates.update { current ->
+            val old = current[cameraName] ?: CameraUiState()
+            current + (cameraName to old.copy(isLive = !old.isLive))
+        }
     }
 
     fun toggleMic(cameraName: String) {
-        val updatedCameras = _uiState.value.cameras.map {
-            if (it.name == cameraName) it.copy(isMicEnabled = !it.isMicEnabled) else it
+        _cameraUiStates.update { current ->
+            val old = current[cameraName] ?: CameraUiState()
+            current + (cameraName to old.copy(isMicEnabled = !old.isMicEnabled))
         }
-        _uiState.value = _uiState.value.copy(cameras = updatedCameras)
     }
 
     fun toggleSpeaker(cameraName: String) {
-        val updatedCameras = _uiState.value.cameras.map {
-            if (it.name == cameraName) {
-                val newState = !it.isSpeakerEnabled
-                it.copy(
-                    isSpeakerEnabled = newState,
-                    isLive = if (newState) true else it.isLive
-                )
-            } else it
+        _cameraUiStates.update { current ->
+            val old = current[cameraName] ?: CameraUiState()
+            val newState = !old.isSpeakerEnabled
+            current + (cameraName to old.copy(
+                isSpeakerEnabled = newState,
+                isLive = if (newState) true else old.isLive
+            ))
         }
-        _uiState.value = _uiState.value.copy(cameras = updatedCameras)
     }
 
     fun togglePlayerType(cameraName: String) {
-        val updatedCameras = _uiState.value.cameras.map {
-            if (it.name == cameraName) it.copy(useHls = !it.useHls) else it
+        _cameraUiStates.update { current ->
+            val old = current[cameraName] ?: CameraUiState()
+            val currentActual = uiState.value.cameras.find { it.name == cameraName }?.useHls ?: true
+            current + (cameraName to old.copy(useHls = !currentActual))
         }
-        _uiState.value = _uiState.value.copy(cameras = updatedCameras)
     }
 }

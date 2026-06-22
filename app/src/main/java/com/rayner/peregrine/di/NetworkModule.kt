@@ -2,6 +2,7 @@ package com.rayner.peregrine.di
 
 import android.content.Context
 import coil3.ImageLoader
+import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.google.gson.GsonBuilder
 import com.rayner.peregrine.data.remote.api.DynamicBaseUrlInterceptor
@@ -112,6 +113,11 @@ object NetworkModule {
         return ImageLoader.Builder(context)
             .components {
                 add(OkHttpNetworkFetcherFactory(callFactory = { okHttpClient }))
+            }
+            .memoryCache {
+                MemoryCache.Builder()
+                    .maxSizePercent(context, 0.25)
+                    .build()
             }
             .build()
     }

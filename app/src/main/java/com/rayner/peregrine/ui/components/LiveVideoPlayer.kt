@@ -27,6 +27,9 @@ import okhttp3.OkHttpClient
 fun LiveVideoPlayer(
     url: String,
     isMuted: Boolean,
+    isPlaying: Boolean = true,
+    showController: Boolean = true,
+    onPlayerCreated: ((Player) -> Unit)? = null,
     placeholderUrl: String? = null,
     okHttpClient: OkHttpClient,
     imageLoader: coil3.ImageLoader,
@@ -48,6 +51,7 @@ fun LiveVideoPlayer(
                         }
                     }
                 })
+                onPlayerCreated?.invoke(this)
             }
     }
 
@@ -55,7 +59,11 @@ fun LiveVideoPlayer(
         val mediaItem = MediaItem.fromUri(url)
         exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
-        exoPlayer.playWhenReady = true
+        exoPlayer.playWhenReady = isPlaying
+    }
+
+    LaunchedEffect(isPlaying) {
+        exoPlayer.playWhenReady = isPlaying
     }
 
     LaunchedEffect(isMuted) {
@@ -78,7 +86,9 @@ fun LiveVideoPlayer(
             factory = {
                 PlayerView(context).apply {
                     player = exoPlayer
-                    useController = true
+                    useController = showController
+                    controllerAutoShow = showController
+                    controllerHideOnTouch = showController
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
                 }
             },

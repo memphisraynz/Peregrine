@@ -1,21 +1,32 @@
 package com.rayner.peregrine.ui.screens.review
 
-import android.util.Log
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import com.rayner.peregrine.data.local.entity.ReviewItemEntity
+import com.rayner.peregrine.ui.theme.DetectionColors
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -24,33 +35,94 @@ fun ReviewScreen(
     onItemClick: (String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val filteredItems = uiState.filteredItems
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(title = { Text("Review") })
+            TopAppBar(
+                title = { Text("Review", style = MaterialTheme.typography.headlineSmall) },
+                actions = {
+                    IconButton(onClick = { viewModel.refresh() }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            )
         }
     ) { padding ->
-        if (uiState.isLoading) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else if (uiState.error != null) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text(text = uiState.error!!, color = MaterialTheme.colorScheme.error)
-            }
-        } else {
-            LazyColumn(
-                contentPadding = PaddingValues(8.dp),
-                modifier = Modifier.fillMaxSize().padding(padding)
+        PullToRefreshBox(
+            isRefreshing = uiState.isLoading,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.padding(padding)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize()
             ) {
-                items(uiState.reviewItems) { item ->
-                    val id = item["id"] as? String ?: ""
-                    ReviewItemCard(
-                        item = item,
-                        baseUrl = uiState.baseUrl,
-                        imageLoader = viewModel.imageLoader,
-                        onClick = { onItemClick(id) }
-                    )
+                // Segmented Control
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    ReviewTab.entries.forEachIndexed { index, tab ->
+                        SegmentedButton(
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = ReviewTab.entries.size),
+                            onClick = { viewModel.setTab(tab) },
+                            selected = uiState.selectedTab == tab,
+                            icon = {
+                                if (uiState.selectedTab == tab) {
+                                    SegmentedButtonDefaults.Icon(active = true) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(SegmentedButtonDefaults.IconSize)
+                                        )
+                                    }
+                                }
+                            },
+                            colors = SegmentedButtonDefaults.colors(
+                                activeContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                activeContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                inactiveContainerColor = Color.Transparent,
+                                inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                activeBorderColor = MaterialTheme.colorScheme.outline,
+                                inactiveBorderColor = MaterialTheme.colorScheme.outline
+                            )
+                        ) {
+                            Text(tab.name.lowercase().replaceFirstChar { it.uppercase() })
+                        }
+                    }
+                }
+
+                if (filteredItems.isEmpty() && !uiState.isLoading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("No items found", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else {
+                    val groupedItems = groupReviewItemsByDate(filteredItems)
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 16.dp)
+                    ) {
+                        groupedItems.forEach { (dateHeader, items) ->
+                            item(key = dateHeader) {
+                                DateHeader(dateHeader)
+                            }
+                            items(items, key = { it.id }) { item ->
+                                ReviewItemCard(
+                                    item = item,
+                                    baseUrl = uiState.baseUrl,
+                                    imageLoader = viewModel.imageLoader,
+                                    onClick = { onItemClick(item.id) }
+                                )
+                                Spacer(modifier = Modifier.height(14.dp))
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -58,23 +130,49 @@ fun ReviewScreen(
 }
 
 @Composable
+fun DateHeader(text: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge.copy(
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp
+            )
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            thickness = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
+    }
+}
+
+@Composable
 fun ReviewItemCard(
-    item: Map<String, Any>,
+    item: ReviewItemEntity,
     baseUrl: String,
     imageLoader: coil3.ImageLoader,
     onClick: () -> Unit
 ) {
-    val camera = item["camera"] as? String ?: "Unknown"
-    val severity = item["severity"] as? String ?: "review"
-    val data = item["data"] as? Map<*, *>
-    val objects = data?.get("objects") as? List<*>
-    val label = objects?.firstOrNull()?.toString()?.replaceFirstChar { it.uppercase() }
-        ?: severity.replaceFirstChar { it.uppercase() }
+    val camera = item.camera
+    val primaryLabel = item.primaryLabel ?: item.severity
     
-    val startTime = item["start_time"]?.toString() ?: ""
-    val thumbPath = item["thumb_path"] as? String ?: ""
-    
-    // Revert to working mapping: /media/frigate/clips -> /clips
+    val startTime = item.startTime
+    val thumbPath = item.thumbPath
+    val hasBeenReviewed = item.hasBeenReviewed
+
+    val formattedTime = remember(startTime) {
+        val date = Date((startTime * 1000).toLong())
+        SimpleDateFormat("h:mm a", Locale.getDefault()).format(date)
+    }
+
     val normalizedPath = thumbPath.replace("/media/frigate", "")
     val fullThumbUrl = if (normalizedPath.startsWith("/")) {
         "$baseUrl$normalizedPath"
@@ -84,39 +182,119 @@ fun ReviewItemCard(
 
     Card(
         modifier = Modifier
-            .padding(8.dp)
+            .padding(horizontal = 16.dp)
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        )
     ) {
-        Column {
+        Box(modifier = Modifier.aspectRatio(16 / 9f)) {
             AsyncImage(
                 model = fullThumbUrl,
                 imageLoader = imageLoader,
                 contentDescription = "$camera review thumbnail",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1.77f),
+                modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
 
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = label, style = MaterialTheme.typography.titleLarge)
-                    val isRetained = item["retain_indefinitely"] as? Boolean ?: false
-                    if (isRetained) {
-                        SuggestionChip(
-                            onClick = { },
-                            label = { Text("Retained") }
-                        )
-                    }
-                }
-                Text(text = "Camera: $camera", style = MaterialTheme.typography.bodyMedium)
-                Text(text = "Started: $startTime", style = MaterialTheme.typography.bodySmall)
+            // Category chip top-left
+            DetectionChip(
+                label = primaryLabel,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+            )
+
+            // Camera name pill bottom-left
+            Surface(
+                color = Color(0x9E141218),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(8.dp)
+            ) {
+                Text(
+                    text = camera,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            // Time bottom-right
+            Text(
+                text = formattedTime,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White // High contrast on image
+            )
+
+            // Unreviewed dot top-right
+            if (!hasBeenReviewed) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(8.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                )
             }
         }
     }
+}
+
+@Composable
+fun DetectionChip(label: String, modifier: Modifier = Modifier) {
+    val colors = when (label.lowercase()) {
+        "person" -> DetectionColors.Person
+        "car", "vehicle", "truck", "bus" -> DetectionColors.Vehicle
+        "dog", "cat", "animal" -> DetectionColors.Animal
+        else -> DetectionColors.Person // Default
+    }
+
+    Surface(
+        color = colors.container,
+        shape = RoundedCornerShape(8.dp),
+        modifier = modifier
+    ) {
+        Text(
+            text = label.replaceFirstChar { it.uppercase() },
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+            color = colors.onContainer
+        )
+    }
+}
+
+fun groupReviewItemsByDate(items: List<ReviewItemEntity>): Map<String, List<ReviewItemEntity>> {
+    val grouped = mutableMapOf<String, MutableList<ReviewItemEntity>>()
+    val today = Calendar.getInstance().apply { 
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    
+    val yesterday = today - 24 * 60 * 60 * 1000
+
+    val dateFormat = SimpleDateFormat("MMMM d, yyyy", Locale.getDefault())
+
+    items.forEach { item ->
+        val startTime = item.startTime * 1000
+        val date = Date(startTime.toLong())
+        
+        val header = when {
+            startTime >= today -> "Today"
+            startTime >= yesterday -> "Yesterday"
+            else -> dateFormat.format(date)
+        }
+        
+        grouped.getOrPut(header) { mutableListOf() }.add(item)
+    }
+    
+    return grouped
 }

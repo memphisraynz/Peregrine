@@ -1,6 +1,14 @@
 package com.rayner.peregrine.ui.screens.live
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.view.WindowManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -8,33 +16,37 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import android.Manifest
-import android.content.pm.PackageManager
-import android.view.WindowManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil3.ImageLoader
 import coil3.compose.AsyncImage
+import com.rayner.peregrine.data.local.entity.ReviewItemEntity
 import com.rayner.peregrine.domain.model.Camera
 import com.rayner.peregrine.ui.components.FrigateWebRtcMic
 import com.rayner.peregrine.ui.components.FrigateWebRtcPlayer
 import com.rayner.peregrine.ui.components.HlsPlayer
+import com.rayner.peregrine.ui.theme.AlertBadgeBg
+import com.rayner.peregrine.ui.theme.AlertBadgeText
+import com.rayner.peregrine.ui.theme.DetectionColors
+import com.rayner.peregrine.ui.theme.LiveDot
 import okhttp3.OkHttpClient
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,36 +56,12 @@ fun LiveViewScreen(
     initialCameraName: String? = null,
     autoStartLive: Boolean = false,
     onReviewClick: (String) -> Unit,
-    onCameraClick: (String) -> Unit
+    onCameraClick: (String) -> Unit,
+    onBack: (() -> Unit)? = null
 ) {
-    val imageLoader = viewModel.imageLoader
-    val okHttpClient = viewModel.okHttpClient
     val uiState by viewModel.uiState.collectAsState()
+    val isDetail = initialCameraName != null
     val context = LocalContext.current
-    val view = LocalView.current
-
-    // Keep screen awake when in detail view
-    DisposableEffect(initialCameraName) {
-        if (initialCameraName != null) {
-            val window = (context as? android.app.Activity)?.window
-            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            onDispose {
-                window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            }
-        } else {
-            onDispose {}
-        }
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { }
-
-    LaunchedEffect(Unit) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-        }
-    }
 
     LaunchedEffect(initialCameraName, autoStartLive, uiState.cameras) {
         if (autoStartLive && initialCameraName != null) {
@@ -84,88 +72,99 @@ fun LiveViewScreen(
         }
     }
 
+    // Keep screen awake when in detail view
+    DisposableEffect(isDetail) {
+        if (isDetail) {
+            val window = (context as? android.app.Activity)?.window
+            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            onDispose {
+                window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        } else {
+            onDispose {}
+        }
+    }
+
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(title = { Text(initialCameraName ?: "Live View") })
-        },
-        floatingActionButton = {
-            if (initialCameraName != null) {
-                val camera = uiState.cameras.firstOrNull { it.name == initialCameraName }
-                if (camera != null) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        horizontalAlignment = Alignment.End
-                    ) {
-                        FloatingActionButton(
-                            onClick = { viewModel.toggleMic(camera.name) },
-                            containerColor = if (camera.isMicEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (camera.isMicEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                        ) {
-                            Icon(
-                                imageVector = if (camera.isMicEnabled) Icons.Default.Mic else Icons.Default.MicOff,
-                                contentDescription = "Toggle Mic"
-                            )
-                        }
-                        FloatingActionButton(
-                            onClick = { viewModel.toggleSpeaker(camera.name) },
-                            containerColor = if (camera.isSpeakerEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (camera.isSpeakerEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                        ) {
-                            Icon(
-                                imageVector = if (camera.isSpeakerEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
-                                contentDescription = "Toggle Speaker"
-                            )
+            TopAppBar(
+                title = { 
+                    Text(
+                        text = initialCameraName ?: "Live", 
+                        style = MaterialTheme.typography.headlineSmall
+                    ) 
+                },
+                navigationIcon = {
+                    if (isDetail && onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                     }
-                }
-            }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            )
         }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (uiState.activeReviews.isNotEmpty()) {
-                ActiveReviewsBar(
-                    reviews = uiState.activeReviews,
-                    onReviewClick = onReviewClick
-                )
+        if (isDetail) {
+            CameraDetailContent(
+                cameraName = initialCameraName!!,
+                uiState = uiState,
+                viewModel = viewModel,
+                modifier = Modifier.padding(padding)
+            )
+        } else {
+            LiveHomeContent(
+                uiState = uiState,
+                viewModel = viewModel,
+                onReviewClick = onReviewClick,
+                onCameraClick = onCameraClick,
+                modifier = Modifier.padding(padding)
+            )
+        }
+    }
+}
+
+@Composable
+fun LiveHomeContent(
+    uiState: LiveUiState,
+    viewModel: LiveViewModel,
+    onReviewClick: (String) -> Unit,
+    onCameraClick: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxSize()) {
+        if (uiState.activeReviews.isNotEmpty()) {
+            AlertsCarousel(
+                reviews = uiState.activeReviews,
+                onReviewClick = onReviewClick,
+                baseUrl = uiState.baseUrl,
+                imageLoader = viewModel.imageLoader
+            )
+        }
+
+        SectionDivider("All cameras")
+
+        if (uiState.isLoading && uiState.cameras.isEmpty()) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
             }
-
-            if (uiState.isLoading && uiState.cameras.isEmpty()) {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            } else if (uiState.error != null && uiState.cameras.isEmpty()) {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Text(text = uiState.error!!, color = MaterialTheme.colorScheme.error)
-                }
-            } else {
-                val camerasToShow = initialCameraName?.let { selectedName ->
-                    uiState.cameras.filter { it.name == selectedName }
-                } ?: uiState.cameras
-
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(1),
-                    contentPadding = PaddingValues(8.dp),
-                    modifier = Modifier.weight(1f).fillMaxWidth()
-                ) {
-                    items(camerasToShow, key = { it.name }) { camera ->
-                        CameraCard(
-                            camera = camera,
-                            imageLoader = imageLoader,
-                            okHttpClient = okHttpClient,
-                            isDetailView = initialCameraName != null,
-                            snapshotTimestamp = uiState.snapshotTimestamp,
-                            onCardClick = {
-                                if (initialCameraName == null) {
-                                    onCameraClick(camera.name)
-                                } else if (!camera.isLive) {
-                                    viewModel.setLive(camera.name, true)
-                                }
-                            },
-                            onTogglePlayerType = {
-                                viewModel.togglePlayerType(camera.name)
-                            }
-                        )
-                    }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(1),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(uiState.cameras, key = { it.name }) { camera ->
+                    CameraCard(
+                        camera = camera,
+                        imageLoader = viewModel.imageLoader,
+                        snapshotTimestamp = uiState.snapshotTimestamp,
+                        onClick = { onCameraClick(camera.name) }
+                    )
                 }
             }
         }
@@ -173,148 +172,445 @@ fun LiveViewScreen(
 }
 
 @Composable
-fun ActiveReviewsBar(
-    reviews: List<Map<String, Any>>,
-    onReviewClick: (String) -> Unit
+fun AlertsCarousel(
+    reviews: List<ReviewItemEntity>,
+    onReviewClick: (String) -> Unit,
+    baseUrl: String,
+    imageLoader: coil3.ImageLoader
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(vertical = 4.dp)
-    ) {
-        Text(
-            text = "Active Reviews",
-            style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.padding(horizontal = 8.dp),
-            color = MaterialTheme.colorScheme.primary
-        )
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            items(reviews) { review ->
-                val id = review["id"] as? String ?: ""
-                val camera = review["camera"] as? String ?: "Unknown"
-                val label = review["label"] as? String ?: "Event"
-
-                AssistChip(
-                    onClick = { onReviewClick(id) },
-                    label = { Text("$camera: $label") },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        labelColor = MaterialTheme.colorScheme.onErrorContainer
-                    )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Active alerts",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Badge(
+                    containerColor = AlertBadgeBg,
+                    contentColor = AlertBadgeText
+                ) {
+                    Text(reviews.size.toString())
+                }
+            }
+            TextButton(onClick = { /* Navigate to Review Tab */ }) {
+                Text(
+                    "Review all ›",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
+
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(reviews, key = { it.id }) { review ->
+                AlertCard(review, onReviewClick, baseUrl, imageLoader)
+            }
+        }
+    }
+}
+
+@Composable
+fun AlertCard(
+    review: ReviewItemEntity,
+    onReviewClick: (String) -> Unit,
+    baseUrl: String,
+    imageLoader: coil3.ImageLoader
+) {
+    val id = review.id
+    val camera = review.camera
+    val label = review.primaryLabel ?: "Person"
+    val startTime = review.startTime
+
+    val timeStr = remember(startTime) {
+        val date = java.util.Date((startTime * 1000).toLong())
+        java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()).format(date)
+    }
+
+    val thumbPath = review.thumbPath
+    val normalizedPath = thumbPath.replace("/media/frigate", "")
+    val fullThumbUrl = "$baseUrl$normalizedPath"
+
+    Card(
+        modifier = Modifier
+            .width(130.dp)
+            .clickable { onReviewClick(id) },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Column {
+            Box(modifier = Modifier
+                .fillMaxWidth()
+                .height(84.dp)) {
+                AsyncImage(
+                    model = fullThumbUrl,
+                    imageLoader = imageLoader,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+                DetectionChipSmall(
+                    label = label,
+                    modifier = Modifier
+                        .padding(4.dp)
+                        .align(Alignment.TopStart)
+                )
+            }
+            Column(modifier = Modifier.padding(8.dp)) {
+                Text(
+                    text = camera,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = timeStr,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SectionDivider(text: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            shape = RoundedCornerShape(11.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Videocam,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        HorizontalDivider(
+            modifier = Modifier.fillMaxWidth(),
+            thickness = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
     }
 }
 
 @Composable
 fun CameraCard(
     camera: Camera,
-    imageLoader: ImageLoader,
-    okHttpClient: OkHttpClient,
-    isDetailView: Boolean,
+    imageLoader: coil3.ImageLoader,
     snapshotTimestamp: Long,
-    onCardClick: () -> Unit,
-    onTogglePlayerType: () -> Unit
+    onClick: () -> Unit
 ) {
+    val ratio = camera.width.toFloat() / camera.height.toFloat()
+    
     Card(
         modifier = Modifier
-            .padding(8.dp)
             .fillMaxWidth()
-            .then(if (isDetailView) Modifier.wrapContentHeight() else Modifier.aspectRatio(camera.width.toFloat() / camera.height.toFloat()))
-            .clickable(onClick = onCardClick)
+            .aspectRatio(ratio)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        )
     ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            val snapshotUrlWithCache = if (camera.snapshotUrl.contains("?")) {
+                "${camera.snapshotUrl}&cache=$snapshotTimestamp"
+            } else {
+                "${camera.snapshotUrl}?cache=$snapshotTimestamp"
+            }
+
+            val context = LocalContext.current
+            var lastSuccessfulPainter by remember { mutableStateOf<androidx.compose.ui.graphics.painter.Painter?>(null) }
+
+            // 1. Static/Caching layer: Loads the last known image from disk cache instantly
+            AsyncImage(
+                model = coil3.request.ImageRequest.Builder(context)
+                    .data(camera.snapshotUrl)
+                    .diskCacheKey(camera.name) // Stable key for instant retrieval on start/unlock
+                    .build(),
+                imageLoader = imageLoader,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+
+            // 2. Live layer: Updates periodically and handles smooth transitions
+            AsyncImage(
+                model = coil3.request.ImageRequest.Builder(context)
+                    .data(snapshotUrlWithCache)
+                    .build(),
+                imageLoader = imageLoader,
+                contentDescription = camera.name,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                placeholder = lastSuccessfulPainter,
+                onSuccess = { state ->
+                    lastSuccessfulPainter = state.painter
+                    // Background: update the static disk cache slot with this new image
+                    imageLoader.enqueue(
+                        coil3.request.ImageRequest.Builder(context)
+                            .data(snapshotUrlWithCache)
+                            .diskCacheKey(camera.name)
+                            .build()
+                    )
+                }
+            )
+
+            // Overlays
+            Surface(
+                color = Color(0x9E141218),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = camera.name,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            
+            // Detection chip (if active)
+            // For now, just a placeholder or based on some state
+        }
+    }
+}
+
+@Composable
+fun CameraDetailContent(
+    cameraName: String,
+    uiState: LiveUiState,
+    viewModel: LiveViewModel,
+    modifier: Modifier = Modifier
+) {
+    val camera = uiState.cameras.firstOrNull { it.name == cameraName } ?: return
+    val okHttpClient = viewModel.okHttpClient
+
+    Column(modifier = modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(280.dp) // Increased height for a "bigger" stream
+                .background(Color.Black)
+        ) {
             if (camera.isLive) {
                 if (camera.useHls && camera.hlsUrl != null) {
                     HlsPlayer(
                         url = camera.hlsUrl,
                         isSpeakerEnabled = camera.isSpeakerEnabled,
                         okHttpClient = okHttpClient,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(camera.width.toFloat() / camera.height.toFloat())
+                        modifier = Modifier.fillMaxSize()
                     )
                 } else if (camera.mseUrl != null) {
-                    // Try removing codec hints to let SDP negotiation handle it
                     val signalingUrl = camera.mseUrl
                         .replace("/live/mse/api/ws?src=", "/api/go2rtc/webrtc?src=")
-                    
-                    val ratio = camera.width.toFloat() / camera.height.toFloat()
                     
                     FrigateWebRtcPlayer(
                         signalingUrl = signalingUrl,
                         isMicEnabled = camera.isMicEnabled,
                         isSpeakerEnabled = camera.isSpeakerEnabled,
                         okHttpClient = okHttpClient,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(ratio)
-                    )
-                }
-
-                // Parallel microphone connection for HLS mode or two-way talk
-                if (camera.isMicEnabled && camera.mseUrl != null) {
-                    val micSignalingUrl = camera.mseUrl
-                        .replace("/live/mse/api/ws?src=", "/api/go2rtc/webrtc?src=")
-                        .let { base -> "$base&media=microphone" }
-                    
-                    FrigateWebRtcMic(
-                        signalingUrl = micSignalingUrl,
-                        isEnabled = true,
-                        okHttpClient = okHttpClient
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
             } else {
-                val snapshotUrl = if (camera.snapshotUrl.contains("?")) {
-                    "${camera.snapshotUrl}&cache=$snapshotTimestamp"
-                } else {
-                    "${camera.snapshotUrl}?cache=$snapshotTimestamp"
-                }
-
-                val ratio = camera.width.toFloat() / camera.height.toFloat()
-                
-                var lastSuccessfulPainter by remember { mutableStateOf<Painter?>(null) }
-
-                Box(modifier = Modifier.fillMaxWidth().aspectRatio(ratio)) {
-                    AsyncImage(
-                        model = snapshotUrl,
-                        imageLoader = imageLoader,
-                        contentDescription = camera.name,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                        placeholder = lastSuccessfulPainter,
-                        onSuccess = { state ->
-                            lastSuccessfulPainter = state.painter
-                        }
-                    )
-                }
+                AsyncImage(
+                    model = camera.snapshotUrl,
+                    imageLoader = viewModel.imageLoader,
+                    contentDescription = camera.name,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
+                )
             }
 
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.align(Alignment.BottomStart).padding(4.dp),
-                shape = MaterialTheme.shapes.small
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = camera.name,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                    if (camera.isLive) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (camera.useHls) "HLS" else "RTC",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.clickable { onTogglePlayerType() }
-                        )
-                    }
-                }
+            // LIVE pill
+            LivePill(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(12.dp)
+            )
+        }
+
+        // Microphone connection
+        if (camera.isMicEnabled && camera.mseUrl != null) {
+            val micSignalingUrl = camera.mseUrl
+                .replace("/live/mse/api/ws?src=", "/api/go2rtc/webrtc?src=")
+                .let { base -> "$base&media=microphone" }
+
+            FrigateWebRtcMic(
+                signalingUrl = micSignalingUrl,
+                isEnabled = true,
+                okHttpClient = okHttpClient
+            )
+        }
+
+        // FAB row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            DetailFAB(
+                icon = Icons.Default.Mic,
+                isActive = camera.isMicEnabled,
+                onClick = { viewModel.toggleMic(camera.name) },
+                activeColors = DetectionColors.Person,
+                inactiveColors = DetectionColors.Person // Use same hue
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            DetailFAB(
+                icon = Icons.AutoMirrored.Filled.VolumeUp,
+                isActive = camera.isSpeakerEnabled,
+                onClick = { viewModel.toggleSpeaker(camera.name) },
+                activeColors = DetectionColors.Animal, // Use a different hue for speaker
+                inactiveColors = DetectionColors.Animal
+            )
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Recent activity
+        Text(
+            text = "Recent activity",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(bottom = 16.dp)
+        ) {
+            // Placeholder for recent activity items
+            items(5) {
+                Box(
+                    modifier = Modifier
+                        .size(100.dp, 60.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                )
             }
         }
+    }
+}
+
+@Composable
+fun LivePill(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "live")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "blink"
+    )
+
+    Surface(
+        color = Color(0x9E141218),
+        shape = RoundedCornerShape(8.dp),
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(LiveDot.copy(alpha = alpha), CircleShape)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "LIVE",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                color = Color.White,
+                fontSize = 10.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun DetailFAB(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    activeColors: DetectionColors.Pair,
+    inactiveColors: DetectionColors.Pair
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = if (isActive) activeColors.bright else activeColors.container,
+        modifier = Modifier.size(48.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (isActive) activeColors.onBright else activeColors.onContainer,
+                modifier = Modifier.size(26.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun DetectionChipSmall(label: String, modifier: Modifier = Modifier) {
+    val colors = when (label.lowercase()) {
+        "person" -> DetectionColors.Person
+        "car", "vehicle" -> DetectionColors.Vehicle
+        "animal" -> DetectionColors.Animal
+        else -> DetectionColors.Person
+    }
+
+    Surface(
+        color = colors.container,
+        shape = RoundedCornerShape(7.dp),
+        modifier = modifier
+    ) {
+        Text(
+            text = label.replaceFirstChar { it.uppercase() },
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.onContainer,
+            fontSize = 10.sp
+        )
     }
 }
