@@ -30,7 +30,12 @@ interface FrigateApiService {
     ): List<Map<String, Any>>
 
     @GET("api/review")
-    suspend fun getReviewItems(): List<Map<String, Any>>
+    suspend fun getReviewItems(
+        @Query("limit") limit: Int? = null,
+        @Query("severity") severity: String? = null,
+        @Query("reviewed") reviewed: Int? = null,
+        @Query("camera") camera: String? = null
+    ): List<Map<String, Any>>
 
     @GET("api/logs/{service}")
     suspend fun getLogs(@retrofit2.http.Path("service") service: String): String

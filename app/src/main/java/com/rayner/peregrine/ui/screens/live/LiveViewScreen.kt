@@ -20,8 +20,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -91,7 +93,7 @@ fun LiveViewScreen(
             TopAppBar(
                 title = { 
                     Text(
-                        text = initialCameraName ?: "Live", 
+                        text = initialCameraName ?: "Cameras",
                         style = MaterialTheme.typography.headlineSmall
                     ) 
                 },
@@ -113,6 +115,7 @@ fun LiveViewScreen(
                 cameraName = initialCameraName!!,
                 uiState = uiState,
                 viewModel = viewModel,
+                onReviewClick = onReviewClick,
                 modifier = Modifier.padding(padding)
             )
         } else {
@@ -135,36 +138,40 @@ fun LiveHomeContent(
     onCameraClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.fillMaxSize()) {
-        if (uiState.activeReviews.isNotEmpty()) {
-            AlertsCarousel(
-                reviews = uiState.activeReviews,
-                onReviewClick = onReviewClick,
-                baseUrl = uiState.baseUrl,
-                imageLoader = viewModel.imageLoader
-            )
-        }
-
-        SectionDivider("All cameras")
-
+    Box(modifier = modifier.fillMaxSize()) {
         if (uiState.isLoading && uiState.cameras.isEmpty()) {
-            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(1),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
+                if (uiState.activeReviews.isNotEmpty()) {
+                    item {
+                        AlertsCarousel(
+                            reviews = uiState.activeReviews,
+                            onReviewClick = onReviewClick,
+                            baseUrl = uiState.baseUrl,
+                            imageLoader = viewModel.imageLoader
+                        )
+                    }
+                }
+
+                item {
+                    SectionDivider("All cameras")
+                }
+
                 items(uiState.cameras, key = { it.name }) { camera ->
-                    CameraCard(
-                        camera = camera,
-                        imageLoader = viewModel.imageLoader,
-                        snapshotTimestamp = uiState.snapshotTimestamp,
-                        onClick = { onCameraClick(camera.name) }
-                    )
+                    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        CameraCard(
+                            camera = camera,
+                            imageLoader = viewModel.imageLoader,
+                            snapshotTimestamp = uiState.snapshotTimestamp,
+                            onClick = { onCameraClick(camera.name) }
+                        )
+                    }
                 }
             }
         }
@@ -178,33 +185,23 @@ fun AlertsCarousel(
     baseUrl: String,
     imageLoader: coil3.ImageLoader
 ) {
-    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+    Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "Active alerts",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Badge(
-                    containerColor = AlertBadgeBg,
-                    contentColor = AlertBadgeText
-                ) {
-                    Text(reviews.size.toString())
-                }
-            }
-            TextButton(onClick = { /* Navigate to Review Tab */ }) {
-                Text(
-                    "Review all ›",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary
-                )
+            Text(
+                text = "Active alerts",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Badge(
+                containerColor = AlertBadgeBg,
+                contentColor = AlertBadgeText
+            ) {
+                Text(reviews.size.toString())
             }
         }
 
@@ -227,14 +224,8 @@ fun AlertCard(
     imageLoader: coil3.ImageLoader
 ) {
     val id = review.id
-    val camera = review.camera
-    val label = review.primaryLabel ?: "Person"
-    val startTime = review.startTime
-
-    val timeStr = remember(startTime) {
-        val date = java.util.Date((startTime * 1000).toLong())
-        java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()).format(date)
-    }
+    val label = getDisplayLabel(review)
+    val colors = getDetectionColors(review)
 
     val thumbPath = review.thumbPath
     val normalizedPath = thumbPath.replace("/media/frigate", "")
@@ -243,43 +234,25 @@ fun AlertCard(
     Card(
         modifier = Modifier
             .width(130.dp)
+            .height(84.dp)
             .clickable { onReviewClick(id) },
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        )
+        shape = RoundedCornerShape(16.dp)
     ) {
-        Column {
-            Box(modifier = Modifier
-                .fillMaxWidth()
-                .height(84.dp)) {
-                AsyncImage(
-                    model = fullThumbUrl,
-                    imageLoader = imageLoader,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-                DetectionChipSmall(
-                    label = label,
-                    modifier = Modifier
-                        .padding(4.dp)
-                        .align(Alignment.TopStart)
-                )
-            }
-            Column(modifier = Modifier.padding(8.dp)) {
-                Text(
-                    text = camera,
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 1,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = timeStr,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+        Box(modifier = Modifier.fillMaxSize()) {
+            AsyncImage(
+                model = fullThumbUrl,
+                imageLoader = imageLoader,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+            DetectionChipSmall(
+                label = label,
+                colors = colors,
+                modifier = Modifier
+                    .padding(6.dp)
+                    .align(Alignment.TopStart)
+            )
         }
     }
 }
@@ -289,7 +262,7 @@ fun SectionDivider(text: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Surface(
@@ -331,12 +304,10 @@ fun CameraCard(
     snapshotTimestamp: Long,
     onClick: () -> Unit
 ) {
-    val ratio = camera.width.toFloat() / camera.height.toFloat()
-    
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(ratio)
+            .aspectRatio(16 / 9f) // Fixed aspect ratio for 16:9 cameras
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
@@ -353,19 +324,19 @@ fun CameraCard(
             val context = LocalContext.current
             var lastSuccessfulPainter by remember { mutableStateOf<androidx.compose.ui.graphics.painter.Painter?>(null) }
 
-            // 1. Static/Caching layer: Loads the last known image from disk cache instantly
+            // 1. Static/Caching layer
             AsyncImage(
                 model = coil3.request.ImageRequest.Builder(context)
                     .data(camera.snapshotUrl)
-                    .diskCacheKey(camera.name) // Stable key for instant retrieval on start/unlock
+                    .diskCacheKey(camera.name)
                     .build(),
                 imageLoader = imageLoader,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Fit
             )
 
-            // 2. Live layer: Updates periodically and handles smooth transitions
+            // 2. Live layer
             AsyncImage(
                 model = coil3.request.ImageRequest.Builder(context)
                     .data(snapshotUrlWithCache)
@@ -373,7 +344,7 @@ fun CameraCard(
                 imageLoader = imageLoader,
                 contentDescription = camera.name,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
+                contentScale = ContentScale.Fit,
                 placeholder = lastSuccessfulPainter,
                 onSuccess = { state ->
                     lastSuccessfulPainter = state.painter
@@ -402,10 +373,29 @@ fun CameraCard(
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
-            
-            // Detection chip (if active)
-            // For now, just a placeholder or based on some state
         }
+    }
+}
+
+private fun getDisplayLabel(review: ReviewItemEntity): String {
+    val subLabel = review.subLabels.firstOrNull()
+    return if (review.objects.contains("person-verified") && subLabel != null) {
+        subLabel
+    } else {
+        review.primaryLabel ?: "Alert"
+    }
+}
+
+private fun getDetectionColors(review: ReviewItemEntity): DetectionColors.Pair {
+    val subLabel = review.subLabels.firstOrNull()
+    if (review.objects.contains("person-verified") && subLabel != null) {
+        return DetectionColors.Verified
+    }
+    return when (review.primaryLabel?.lowercase()) {
+        "person" -> DetectionColors.Person
+        "car", "vehicle", "truck", "bus" -> DetectionColors.Vehicle
+        "dog", "cat", "animal" -> DetectionColors.Animal
+        else -> DetectionColors.Person
     }
 }
 
@@ -414,6 +404,7 @@ fun CameraDetailContent(
     cameraName: String,
     uiState: LiveUiState,
     viewModel: LiveViewModel,
+    onReviewClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val camera = uiState.cameras.firstOrNull { it.name == cameraName } ?: return
@@ -438,11 +429,13 @@ fun CameraDetailContent(
                     val signalingUrl = camera.mseUrl
                         .replace("/live/mse/api/ws?src=", "/api/go2rtc/webrtc?src=")
                     
+                    val ratio = camera.width.toFloat() / camera.height.toFloat()
                     FrigateWebRtcPlayer(
                         signalingUrl = signalingUrl,
                         isMicEnabled = camera.isMicEnabled,
                         isSpeakerEnabled = camera.isSpeakerEnabled,
                         okHttpClient = okHttpClient,
+                        aspectRatio = ratio,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -486,18 +479,18 @@ fun CameraDetailContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             DetailFAB(
-                icon = Icons.Default.Mic,
+                icon = if (camera.isMicEnabled) Icons.Default.Mic else Icons.Default.MicOff,
                 isActive = camera.isMicEnabled,
                 onClick = { viewModel.toggleMic(camera.name) },
                 activeColors = DetectionColors.Person,
-                inactiveColors = DetectionColors.Person // Use same hue
+                inactiveColors = DetectionColors.Person
             )
             Spacer(modifier = Modifier.width(12.dp))
             DetailFAB(
-                icon = Icons.AutoMirrored.Filled.VolumeUp,
+                icon = if (camera.isSpeakerEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
                 isActive = camera.isSpeakerEnabled,
                 onClick = { viewModel.toggleSpeaker(camera.name) },
-                activeColors = DetectionColors.Animal, // Use a different hue for speaker
+                activeColors = DetectionColors.Animal,
                 inactiveColors = DetectionColors.Animal
             )
         }
@@ -510,18 +503,20 @@ fun CameraDetailContent(
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
+        val cameraReviews = remember(uiState.allReviews, cameraName) {
+            uiState.allReviews.filter { it.camera == cameraName }.take(10)
+        }
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.padding(bottom = 16.dp)
         ) {
-            // Placeholder for recent activity items
-            items(5) {
-                Box(
-                    modifier = Modifier
-                        .size(100.dp, 60.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            items(cameraReviews, key = { it.id }) { review ->
+                AlertCard(
+                    review = review,
+                    onReviewClick = { viewModel.setLive(cameraName, false); onReviewClick(it) },
+                    baseUrl = uiState.baseUrl,
+                    imageLoader = viewModel.imageLoader
                 )
             }
         }
@@ -592,14 +587,11 @@ fun DetailFAB(
 }
 
 @Composable
-fun DetectionChipSmall(label: String, modifier: Modifier = Modifier) {
-    val colors = when (label.lowercase()) {
-        "person" -> DetectionColors.Person
-        "car", "vehicle" -> DetectionColors.Vehicle
-        "animal" -> DetectionColors.Animal
-        else -> DetectionColors.Person
-    }
-
+fun DetectionChipSmall(
+    label: String,
+    colors: DetectionColors.Pair,
+    modifier: Modifier = Modifier
+) {
     Surface(
         color = colors.container,
         shape = RoundedCornerShape(7.dp),

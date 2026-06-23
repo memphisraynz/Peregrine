@@ -1,5 +1,6 @@
 package com.rayner.peregrine.ui.screens.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -7,6 +8,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Notes
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
@@ -63,13 +66,24 @@ fun SettingsScreen(
             item { SettingsSectionHeader("Cameras") }
             item {
                 SettingsGroup {
-                    SettingsRow(
+                    SettingsDropdownRow(
                         icon = Icons.Default.Videocam,
                         title = "Player type",
-                        subtitle = if (uiState.defaultPlayerType == "hls") "HLS (Stable)" else "WebRTC (Low latency)",
-                        onClick = { 
-                            val nextType = if (uiState.defaultPlayerType == "hls") "webrtc" else "hls"
-                            viewModel.setDefaultPlayerType(nextType)
+                        selectedOption = if (uiState.defaultPlayerType == "hls") "HLS (Stable)" else "WebRTC (Low latency)",
+                        options = listOf("HLS (Stable)", "WebRTC (Low latency)"),
+                        onOptionSelected = { option ->
+                            val type = if (option == "HLS (Stable)") "hls" else "webrtc"
+                            viewModel.setDefaultPlayerType(type)
+                        }
+                    )
+                    SettingsDropdownRow(
+                        icon = Icons.Default.Palette,
+                        title = "VOD Buffer",
+                        selectedOption = "${uiState.vodBuffer} seconds",
+                        options = listOf("0 seconds", "5 seconds", "10 seconds", "15 seconds"),
+                        onOptionSelected = { option ->
+                            val seconds = option.split(" ")[0].toInt()
+                            viewModel.setVodBuffer(seconds)
                         }
                     )
                     SettingsToggleRow(
@@ -127,6 +141,61 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Logout")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsDropdownRow(
+    icon: ImageVector,
+    title: String,
+    selectedOption: String,
+    options: List<String>,
+    onOptionSelected: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        ListItem(
+            headlineContent = { Text(title, style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp)) },
+            supportingContent = { Text(selectedOption, style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp)) },
+            leadingContent = {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            },
+            trailingContent = {
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            modifier = Modifier.clickable { expanded = true }
+        )
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = {
+                        onOptionSelected(option)
+                        expanded = false
+                    }
+                )
             }
         }
     }

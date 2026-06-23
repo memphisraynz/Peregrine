@@ -4,11 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rayner.peregrine.data.remote.api.ServerUrlManager
 import com.rayner.peregrine.domain.repository.FrigateRepository
+import com.rayner.peregrine.data.local.entity.PreferenceEntity
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -16,6 +19,7 @@ data class SettingsUiState(
     val serverUrl: String = "",
     val username: String = "",
     val defaultPlayerType: String = "hls",
+    val vodBuffer: Int = 5,
     val isLoading: Boolean = false
 )
 
@@ -32,22 +36,36 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             repository.getServerConfig().collectLatest { config ->
                 if (config != null) {
-                    _uiState.value = _uiState.value.copy(
+                    _uiState.update { it.copy(
                         serverUrl = config.serverUrl,
-                        username = config.username ?: "",
-                        defaultPlayerType = config.defaultPlayerType
-                    )
-                } else {
-                    _uiState.value = SettingsUiState()
+                        username = config.username ?: ""
+                    ) }
                 }
+            }
+        }
+        
+        viewModelScope.launch {
+            repository.getPreferencesFlow().collectLatest { prefs ->
+                val p = prefs ?: PreferenceEntity()
+                _uiState.update { it.copy(
+                    defaultPlayerType = p.defaultPlayerType,
+                    vodBuffer = p.vodBuffer
+                ) }
             }
         }
     }
 
     fun setDefaultPlayerType(type: String) {
         viewModelScope.launch {
-            val config = repository.getServerConfig().firstOrNull() ?: return@launch
-            repository.updateServerConfig(config.copy(defaultPlayerType = type))
+            val current = repository.getPreferencesFlow().firstOrNull() ?: PreferenceEntity()
+            repository.updatePreferences(current.copy(defaultPlayerType = type))
+        }
+    }
+
+    fun setVodBuffer(seconds: Int) {
+        viewModelScope.launch {
+            val current = repository.getPreferencesFlow().firstOrNull() ?: PreferenceEntity()
+            repository.updatePreferences(current.copy(vodBuffer = seconds))
         }
     }
 

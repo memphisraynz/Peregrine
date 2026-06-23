@@ -60,9 +60,21 @@ class ReviewViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ReviewUiState())
 
     init {
+        // Initial refresh for both to seed the DB
         refresh()
         
-        // Also refresh when a valid URL is first detected, in case the initial init call failed due to no URL
+        // Refresh specifically when the tab changes to ensure we have data for that severity
+        viewModelScope.launch {
+            _selectedTab.collect { tab ->
+                val severity = when (tab) {
+                    ReviewTab.ALERTS -> "alert"
+                    ReviewTab.DETECTIONS -> "detection"
+                }
+                repository.refreshReviewItems(limit = 50, severity = severity)
+            }
+        }
+
+        // Also refresh when a valid URL is first detected
         viewModelScope.launch {
             serverUrlManager.currentUrl
                 .filterNotNull()
@@ -83,10 +95,11 @@ class ReviewViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
-            val result = repository.refreshReviewItems()
-            if (result.isFailure) {
-                _error.value = "Failed to refresh: ${result.exceptionOrNull()?.message}"
-            }
+            
+            // Fetch a bit of both to start
+            repository.refreshReviewItems(limit = 50, severity = "alert")
+            repository.refreshReviewItems(limit = 50, severity = "detection")
+
             _isLoading.value = false
         }
     }

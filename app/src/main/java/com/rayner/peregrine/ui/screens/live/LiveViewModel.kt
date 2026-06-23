@@ -16,6 +16,7 @@ import javax.inject.Inject
 data class LiveUiState(
     val cameras: List<Camera> = emptyList(),
     val activeReviews: List<ReviewItemEntity> = emptyList(),
+    val allReviews: List<ReviewItemEntity> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
     val snapshotTimestamp: Long = System.currentTimeMillis(),
@@ -54,6 +55,7 @@ class LiveViewModel @Inject constructor(
         val (ts, url, uiStates) = extra
         val cameras = entities.map { entity ->
             val ui = uiStates[entity.name] ?: CameraUiState()
+            val lastReview = reviews.firstOrNull { it.camera == entity.name }
             Camera(
                 name = entity.name,
                 width = entity.width,
@@ -65,13 +67,15 @@ class LiveViewModel @Inject constructor(
                 isLive = ui.isLive,
                 isMicEnabled = ui.isMicEnabled,
                 isSpeakerEnabled = ui.isSpeakerEnabled,
-                useHls = ui.useHls ?: entity.useHls
+                useHls = ui.useHls ?: entity.useHls,
+                lastReviewItem = lastReview
             )
         }
-        val active = reviews.filter { it.endTime == null }
+        val active = reviews.filter { !it.hasBeenReviewed && it.severity == "alert" }.take(10)
         LiveUiState(
             cameras = cameras,
             activeReviews = active,
+            allReviews = reviews,
             isLoading = loading,
             error = error,
             snapshotTimestamp = ts,
@@ -99,7 +103,7 @@ class LiveViewModel @Inject constructor(
             _error.value = null
 
             val result = repository.refreshCameras()
-            repository.refreshReviewItems()
+            repository.refreshReviewItems(limit = 100) // Get a good chunk initially
 
             if (result.isFailure && uiState.value.cameras.isEmpty()) {
                 _error.value = "Failed to load cameras"
@@ -111,11 +115,13 @@ class LiveViewModel @Inject constructor(
     private fun startSnapshotUpdates() {
         viewModelScope.launch {
             while (true) {
-                repository.refreshReviewItems()
+                // Periodically refresh active (unreviewed) alerts
+                repository.refreshReviewItems(limit = 10, severity = "alert", reviewed = 0)
                 _snapshotTimestamp.value = System.currentTimeMillis()
                 
-                val hasMotion = uiState.value.activeReviews.isNotEmpty()
-                kotlinx.coroutines.delay(if (hasMotion) 1000L else 5000L)
+                // Only fast-refresh if there is an ONGOING event (no end time)
+                val hasActiveMotion = uiState.value.allReviews.any { it.endTime == null }
+                kotlinx.coroutines.delay(if (hasActiveMotion) 1000L else 5000L)
             }
         }
     }

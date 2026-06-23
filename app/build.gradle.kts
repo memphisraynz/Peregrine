@@ -37,6 +37,10 @@ android {
     }
 }
 
+ksp {
+    arg("room.schemaLocation", "${projectDir}/schemas")
+}
+
 configurations.all {
     resolutionStrategy.eachDependency {
         if (requested.group == "org.jetbrains.kotlin" && requested.name == "kotlin-metadata-jvm") {

@@ -26,4 +26,5 @@ object DetectionColors {
     val Person  = Pair(Color(0xFF4F378B), Color(0xFFEADDFF), Color(0xFFD0BCFF), Color(0xFF381E72))
     val Vehicle = Pair(Color(0xFF234B6E), Color(0xFFCFE5FF), Color(0xFFA6CBFF), Color(0xFF0A2A4D))
     val Animal  = Pair(Color(0xFF2E4B33), Color(0xFFBCEFBE), Color(0xFF9BE0A0), Color(0xFF0A3311))
+    val Verified = Pair(Color(0xFF00513B), Color(0xFFB5F3D1), Color(0xFF34D399), Color(0xFF064E3B))
 }

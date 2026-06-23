@@ -4,11 +4,11 @@ import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
-import android.util.Log
-import android.view.ViewGroup
+import android.view.Gravity
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
@@ -37,6 +37,7 @@ fun FrigateWebRtcPlayer(
     isMicEnabled: Boolean,
     isSpeakerEnabled: Boolean,
     okHttpClient: OkHttpClient,
+    aspectRatio: Float,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -53,7 +54,7 @@ fun FrigateWebRtcPlayer(
                 }
                 override fun onFrameResolutionChanged(p0: Int, p1: Int, p2: Int) {}
             })
-            setEnableHardwareScaler(true)
+            setEnableHardwareScaler(false)
             setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
         }
     }
@@ -62,20 +63,15 @@ fun FrigateWebRtcPlayer(
         WebRtcPeerConnectionHolder(context, eglBase, renderer, okHttpClient)
     }
 
-    var connectionState by remember { mutableStateOf(PeerConnection.IceConnectionState.NEW) }
-    
     val isLoading = !isFirstFrameRendered
 
     DisposableEffect(lifecycleOwner, signalingUrl) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 isFirstFrameRendered = false
-                peerConnectionHolder.start(signalingUrl) { state ->
-                    connectionState = state
-                }
+                peerConnectionHolder.start(signalingUrl)
             } else if (event == Lifecycle.Event.ON_PAUSE) {
                 peerConnectionHolder.releasePeerConnection()
-                connectionState = PeerConnection.IceConnectionState.DISCONNECTED
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -101,19 +97,22 @@ fun FrigateWebRtcPlayer(
     }
 
     Box(modifier = modifier.background(Color.Black), contentAlignment = Alignment.Center) {
+        // By using Modifier.aspectRatio(aspectRatio), we ensure the AndroidView itself
+        // is exactly the shape of the video, making cropping impossible.
         AndroidView(
             factory = {
-                FrameLayout(context).apply {
-                    addView(
-                        renderer,
-                        FrameLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT
-                        )
+                FrameLayout(it).apply {
+                    val lp = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        Gravity.CENTER
                     )
+                    addView(renderer, lp)
                 }
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .aspectRatio(aspectRatio)
         )
         if (isLoading) {
             CircularProgressIndicator(color = Color.White)
@@ -157,18 +156,17 @@ private class WebRtcPeerConnectionHolder(
             .createPeerConnectionFactory()
     }
 
-    fun start(signalingUrl: String, onStateChange: (PeerConnection.IceConnectionState) -> Unit) {
+    fun start(signalingUrl: String) {
         scope.launch {
-            doStart(signalingUrl, onStateChange)
+            doStart(signalingUrl)
         }
     }
 
-    private suspend fun doStart(signalingUrl: String, onStateChange: (PeerConnection.IceConnectionState) -> Unit) {
+    private suspend fun doStart(signalingUrl: String) {
         this.currentSignalingUrl = signalingUrl
         this.isMicAdded = false
         releasePeerConnection()
 
-        // Prepare AudioManager for WebRTC
         val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         audioManager.isSpeakerphoneOn = isSpeakerEnabled
@@ -184,9 +182,7 @@ private class WebRtcPeerConnectionHolder(
         
         val pc = factory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
             override fun onSignalingChange(newState: PeerConnection.SignalingState?) = Unit
-            override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState?) {
-                newState?.let { onStateChange(it) }
-            }
+            override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState?) = Unit
             override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
             override fun onIceGatheringChange(newState: PeerConnection.IceGatheringState?) = Unit
             override fun onIceCandidate(candidate: IceCandidate?) = Unit
@@ -213,7 +209,6 @@ private class WebRtcPeerConnectionHolder(
 
         peerConnection = pc
 
-        // Phase 1: Baseline stream (Video + Audio RECV_ONLY)
         val transceiverInit = RtpTransceiver.RtpTransceiverInit(
             RtpTransceiver.RtpTransceiverDirection.RECV_ONLY,
             listOf("stream0")
@@ -227,19 +222,15 @@ private class WebRtcPeerConnectionHolder(
         try {
             val answerSdp = exchangeOffer(signalingUrl, offer.description)
             pc.setRemoteDescriptionAwait(SessionDescription(SessionDescription.Type.ANSWER, answerSdp))
-            
-            // Phase 3: If mic is already requested, activate it now
             if (isMicEnabled) {
                 addMicTrack()
             }
         } catch (e: Exception) {
-            // Error ignored for reduced noise
         }
     }
 
     fun setMicEnabled(enabled: Boolean) {
         isMicEnabled = enabled
-        // Mic handled separately now
     }
 
     fun setSpeakerEnabled(enabled: Boolean) {
@@ -262,8 +253,6 @@ private class WebRtcPeerConnectionHolder(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 audioManager.clearCommunicationDevice()
             }
-            // We keep MODE_IN_COMMUNICATION while the call is active to avoid routing issues,
-            // but we could switch back to NORMAL if preferred.
         }
     }
 
@@ -274,7 +263,7 @@ private class WebRtcPeerConnectionHolder(
 
         localAudioSource = factory.createAudioSource(MediaConstraints())
         localAudioTrack = factory.createAudioTrack("audio_local", localAudioSource).also {
-            it.setEnabled(false) // Handle mic separately via FrigateWebRtcMic
+            it.setEnabled(false)
             pc.addTrack(it, listOf("stream0"))
         }
         isMicAdded = true
@@ -290,7 +279,6 @@ private class WebRtcPeerConnectionHolder(
             val answerSdp = exchangeOffer(signalingUrl, offer.description)
             pc.setRemoteDescriptionAwait(SessionDescription(SessionDescription.Type.ANSWER, answerSdp))
         } catch (e: Exception) {
-            // Error ignored for reduced noise
         }
     }
 

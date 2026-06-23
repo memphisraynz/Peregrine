@@ -33,6 +33,7 @@ class FrigateRepositoryImpl @Inject constructor(
     private val reviewDao: ReviewDao,
     private val exploreDao: ExploreDao,
     private val cameraDao: CameraDao,
+    private val preferenceDao: com.rayner.peregrine.data.local.dao.PreferenceDao,
     private val okHttpClient: OkHttpClient,
     private val cookieJar: CookieJar,
     private val serverUrlManager: com.rayner.peregrine.data.remote.api.ServerUrlManager
@@ -40,6 +41,12 @@ class FrigateRepositoryImpl @Inject constructor(
 
     override fun getServerConfig(): Flow<ServerConfigEntity?> {
         return serverConfigDao.getServerConfig()
+    }
+
+    override fun getPreferencesFlow(): Flow<com.rayner.peregrine.data.local.entity.PreferenceEntity?> = preferenceDao.getPreferences()
+
+    override suspend fun updatePreferences(prefs: com.rayner.peregrine.data.local.entity.PreferenceEntity) {
+        preferenceDao.insertPreferences(prefs)
     }
 
     override suspend fun updateServerConfig(config: ServerConfigEntity) {
@@ -139,12 +146,22 @@ class FrigateRepositoryImpl @Inject constructor(
 
     override fun getReviewItemsFlow(): Flow<List<ReviewItemEntity>> = reviewDao.getReviewItems()
 
-    override suspend fun refreshReviewItems(): Result<Unit> = withContext(Dispatchers.IO) {
+    override suspend fun refreshReviewItems(
+        limit: Int?,
+        severity: String?,
+        reviewed: Int?
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val items = apiService.getReviewItems()
+            val items = apiService.getReviewItems(
+                limit = limit,
+                severity = severity,
+                reviewed = reviewed
+            )
             val entities = items.map { item ->
                 val data = item["data"] as? Map<*, *>
-                val objects = data?.get("objects") as? List<*>
+                val objects = (data?.get("objects") as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
+                val subLabels = (data?.get("sub_labels") as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
+                
                 ReviewItemEntity(
                     id = item["id"] as? String ?: "",
                     camera = item["camera"] as? String ?: "",
@@ -157,7 +174,9 @@ class FrigateRepositoryImpl @Inject constructor(
                         is Number -> h.toInt() != 0
                         else -> true
                     },
-                    primaryLabel = objects?.firstOrNull()?.toString()
+                    primaryLabel = objects.firstOrNull(),
+                    objects = objects,
+                    subLabels = subLabels
                 )
             }
             reviewDao.insertReviewItems(entities)
@@ -190,8 +209,8 @@ class FrigateRepositoryImpl @Inject constructor(
 
     override suspend fun refreshCameras(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val configEntity = serverConfigDao.getServerConfig().firstOrNull()
-            val defaultUseHls = configEntity?.defaultPlayerType == "hls"
+            val prefs = preferenceDao.getPreferences().firstOrNull()
+            val defaultUseHls = prefs?.defaultPlayerType == "hls"
             
             val baseUrl = getBaseUrl()
             val config = apiService.getConfig()
@@ -233,8 +252,8 @@ class FrigateRepositoryImpl @Inject constructor(
 
     override suspend fun getCameras(): Result<List<Camera>> = withContext(Dispatchers.IO) {
         try {
-            val configEntity = serverConfigDao.getServerConfig().firstOrNull()
-            val defaultUseHls = configEntity?.defaultPlayerType == "hls"
+            val prefs = preferenceDao.getPreferences().firstOrNull()
+            val defaultUseHls = prefs?.defaultPlayerType == "hls"
             
             val baseUrl = getBaseUrl()
             val config = apiService.getConfig()

@@ -162,7 +162,7 @@ fun ReviewItemCard(
     onClick: () -> Unit
 ) {
     val camera = item.camera
-    val primaryLabel = item.primaryLabel ?: item.severity
+    val displayLabel = getDisplayLabel(item)
     
     val startTime = item.startTime
     val thumbPath = item.thumbPath
@@ -201,7 +201,8 @@ fun ReviewItemCard(
 
             // Category chip top-left
             DetectionChip(
-                label = primaryLabel,
+                label = displayLabel,
+                colors = getDetectionColors(item),
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(8.dp)
@@ -248,14 +249,7 @@ fun ReviewItemCard(
 }
 
 @Composable
-fun DetectionChip(label: String, modifier: Modifier = Modifier) {
-    val colors = when (label.lowercase()) {
-        "person" -> DetectionColors.Person
-        "car", "vehicle", "truck", "bus" -> DetectionColors.Vehicle
-        "dog", "cat", "animal" -> DetectionColors.Animal
-        else -> DetectionColors.Person // Default
-    }
-
+fun DetectionChip(label: String, colors: DetectionColors.Pair, modifier: Modifier = Modifier) {
     Surface(
         color = colors.container,
         shape = RoundedCornerShape(8.dp),
@@ -297,4 +291,26 @@ fun groupReviewItemsByDate(items: List<ReviewItemEntity>): Map<String, List<Revi
     }
     
     return grouped
+}
+
+private fun getDisplayLabel(review: ReviewItemEntity): String {
+    val subLabel = review.subLabels.firstOrNull()
+    return if (review.objects.contains("person-verified") && subLabel != null) {
+        subLabel
+    } else {
+        review.primaryLabel ?: review.severity
+    }
+}
+
+private fun getDetectionColors(review: ReviewItemEntity): DetectionColors.Pair {
+    val subLabel = review.subLabels.firstOrNull()
+    if (review.objects.contains("person-verified") && subLabel != null) {
+        return DetectionColors.Verified
+    }
+    return when (review.primaryLabel?.lowercase()) {
+        "person" -> DetectionColors.Person
+        "car", "vehicle", "truck", "bus" -> DetectionColors.Vehicle
+        "dog", "cat", "animal" -> DetectionColors.Animal
+        else -> DetectionColors.Person
+    }
 }

@@ -13,5 +13,6 @@ data class ServerConfigEntity(
     val authCookieExpiresAt: Long? = null,
     val isLoggedIn: Boolean = false,
     val isActive: Boolean = true,
-    val defaultPlayerType: String = "hls" // "webrtc" or "hls"
+    val defaultPlayerType: String = "hls", // "webrtc" or "hls"
+    val vodBuffer: Int = 5 // Buffer in seconds
 )

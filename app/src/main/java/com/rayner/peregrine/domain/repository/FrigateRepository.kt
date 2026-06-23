@@ -2,6 +2,7 @@ package com.rayner.peregrine.domain.repository
 
 import com.rayner.peregrine.data.local.entity.CameraEntity
 import com.rayner.peregrine.data.local.entity.ExploreEventEntity
+import com.rayner.peregrine.data.local.entity.PreferenceEntity
 import com.rayner.peregrine.data.local.entity.ReviewItemEntity
 import com.rayner.peregrine.data.local.entity.ServerConfigEntity
 import com.rayner.peregrine.domain.model.Camera
@@ -15,10 +16,17 @@ interface FrigateRepository {
     suspend fun getVersion(): Result<String>
     
     fun getReviewItemsFlow(): Flow<List<ReviewItemEntity>>
-    suspend fun refreshReviewItems(): Result<Unit>
+    suspend fun refreshReviewItems(
+        limit: Int? = null,
+        severity: String? = null,
+        reviewed: Int? = null
+    ): Result<Unit>
     
     fun getExploreEventsFlow(): Flow<List<ExploreEventEntity>>
     suspend fun refreshExploreEvents(): Result<Unit>
+
+    fun getPreferencesFlow(): Flow<PreferenceEntity?>
+    suspend fun updatePreferences(prefs: PreferenceEntity)
 
     fun getCamerasFlow(): Flow<List<CameraEntity>>
     suspend fun refreshCameras(): Result<Unit>

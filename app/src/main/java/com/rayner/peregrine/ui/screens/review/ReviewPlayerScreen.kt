@@ -38,7 +38,7 @@ fun ReviewPlayerScreen(
     var videoUrl by remember { mutableStateOf<String?>(null) }
     var thumbUrl by remember { mutableStateOf<String?>(null) }
     
-    var isMuted by remember { mutableStateOf(false) }
+    var isMuted by remember { mutableStateOf(true) }
     var isPlaying by remember { mutableStateOf(true) }
     var currentPosition by remember { mutableStateOf(0L) }
     var duration by remember { mutableStateOf(0L) }
@@ -53,8 +53,9 @@ fun ReviewPlayerScreen(
         if (item != null && config != null) {
             val base = config.serverUrl.removeSuffix("/")
             val camera = item.camera
-            val start = floor(item.startTime).toLong()
-            val end = floor(item.endTime ?: (item.startTime + 3600.0)).toLong()
+            val buffer = config.vodBuffer
+            val start = (floor(item.startTime).toLong() - buffer).coerceAtLeast(0)
+            val end = floor(item.endTime ?: (item.startTime + 3600.0)).toLong() + buffer
             
             videoUrl = "$base/vod/$camera/start/$start/end/$end/master.m3u8"
             thumbUrl = "$base/api/review/thumbnail/$eventId"
