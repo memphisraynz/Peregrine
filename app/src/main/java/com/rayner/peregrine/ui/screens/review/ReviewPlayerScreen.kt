@@ -23,6 +23,7 @@ import androidx.media3.common.Player
 import com.rayner.peregrine.domain.repository.FrigateRepository
 import com.rayner.peregrine.ui.components.LiveVideoPlayer
 import com.rayner.peregrine.ui.theme.DetectionColors
+import com.rayner.peregrine.util.formatCameraName
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.firstOrNull
 import kotlin.math.floor
@@ -72,11 +73,16 @@ fun ReviewPlayerScreen(
         }
     }
 
+    val title = remember(eventId, uiState.reviewItems) {
+        val item = uiState.reviewItems.find { it.id == eventId }
+        if (item != null) formatCameraName(item.camera) else "Event Clip"
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
-                title = { Text("Event Clip", style = MaterialTheme.typography.headlineSmall) },
+                title = { Text(title, style = MaterialTheme.typography.headlineSmall) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

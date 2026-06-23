@@ -20,7 +20,7 @@ import com.rayner.peregrine.data.local.entity.ReviewItemEntity
         CameraEntity::class,
         PreferenceEntity::class
     ],
-    version = 2, // Increment cache DB version
+    version = 3, // Increment version for ExploreEventEntity schema change
     exportSchema = false
 )
 @TypeConverters(ReviewItemConverters::class)

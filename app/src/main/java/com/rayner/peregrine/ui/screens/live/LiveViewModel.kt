@@ -46,16 +46,30 @@ class LiveViewModel @Inject constructor(
     val uiState: StateFlow<LiveUiState> = combine(
         repository.getCamerasFlow(),
         repository.getReviewItemsFlow(),
+        repository.getExploreEventsFlow(),
         _isLoading,
         _error,
-        combine(_snapshotTimestamp, serverUrlManager.currentUrl, _cameraUiStates) { ts, url, uiStates -> 
-            Triple(ts, url, uiStates)
-        }
-    ) { entities, reviews, loading, error, extra ->
-        val (ts, url, uiStates) = extra
+        _snapshotTimestamp,
+        serverUrlManager.currentUrl,
+        _cameraUiStates
+    ) { array ->
+        @Suppress("UNCHECKED_CAST")
+        val entities = array[0] as List<com.rayner.peregrine.data.local.entity.CameraEntity>
+        @Suppress("UNCHECKED_CAST")
+        val reviews = array[1] as List<ReviewItemEntity>
+        @Suppress("UNCHECKED_CAST")
+        val events = array[2] as List<com.rayner.peregrine.data.local.entity.ExploreEventEntity>
+        val loading = array[3] as Boolean
+        val error = array[4] as String?
+        val ts = array[5] as Long
+        val url = array[6] as String?
+        @Suppress("UNCHECKED_CAST")
+        val uiStates = array[7] as Map<String, CameraUiState>
+
         val cameras = entities.map { entity ->
             val ui = uiStates[entity.name] ?: CameraUiState()
             val lastReview = reviews.firstOrNull { it.camera == entity.name }
+            val hasActiveEvent = events.any { it.camera == entity.name && it.endTime == null }
             Camera(
                 name = entity.name,
                 width = entity.width,
@@ -68,6 +82,7 @@ class LiveViewModel @Inject constructor(
                 isMicEnabled = ui.isMicEnabled,
                 isSpeakerEnabled = ui.isSpeakerEnabled,
                 useHls = ui.useHls ?: entity.useHls,
+                hasMotion = hasActiveEvent,
                 lastReviewItem = lastReview
             )
         }
@@ -115,13 +130,20 @@ class LiveViewModel @Inject constructor(
     private fun startSnapshotUpdates() {
         viewModelScope.launch {
             while (true) {
-                // Periodically refresh active (unreviewed) alerts
-                repository.refreshReviewItems(limit = 10, severity = "alert", reviewed = 0)
-                _snapshotTimestamp.value = System.currentTimeMillis()
+                val now = System.currentTimeMillis()
                 
-                // Only fast-refresh if there is an ONGOING event (no end time)
-                val hasActiveMotion = uiState.value.allReviews.any { it.endTime == null }
-                kotlinx.coroutines.delay(if (hasActiveMotion) 1000L else 5000L)
+                // Immediately update timestamps to trigger UI fetch
+                _snapshotTimestamp.value = now
+
+                // Refresh reviews and events to find active alerts/motion
+                repository.refreshReviewItems(limit = 10, severity = "alert", reviewed = 0)
+                repository.refreshExploreEvents() 
+
+                val state = uiState.value
+                val hasAlerts = state.activeReviews.isNotEmpty()
+                val hasActiveMotion = state.cameras.any { it.hasMotion }
+                
+                kotlinx.coroutines.delay(if (hasAlerts || hasActiveMotion) 1000L else 5000L)
             }
         }
     }

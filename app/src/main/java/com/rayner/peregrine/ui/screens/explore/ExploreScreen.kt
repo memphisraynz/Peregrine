@@ -26,6 +26,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.rayner.peregrine.data.local.entity.ExploreEventEntity
 import com.rayner.peregrine.ui.theme.DetectionColors
+import com.rayner.peregrine.util.formatCameraName
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -213,7 +214,7 @@ fun EventGridCard(
                     .padding(8.dp)
             ) {
                 Text(
-                    text = camera,
+                    text = formatCameraName(camera),
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White
                 )

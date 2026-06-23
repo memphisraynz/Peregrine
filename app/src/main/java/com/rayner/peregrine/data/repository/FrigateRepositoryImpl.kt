@@ -197,6 +197,7 @@ class FrigateRepositoryImpl @Inject constructor(
                     camera = event["camera"] as? String ?: "",
                     label = event["label"] as? String ?: "",
                     startTime = (event["start_time"] as? Number)?.toDouble() ?: 0.0,
+                    endTime = (event["end_time"] as? Number)?.toDouble(),
                     thumbUrl = "$baseUrl/api/events/$id/thumbnail.jpg"
                 )
             }

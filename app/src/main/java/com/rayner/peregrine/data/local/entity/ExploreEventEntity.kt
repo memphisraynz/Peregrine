@@ -9,5 +9,6 @@ data class ExploreEventEntity(
     val camera: String,
     val label: String,
     val startTime: Double,
+    val endTime: Double?,
     val thumbUrl: String
 )

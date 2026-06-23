@@ -49,6 +49,7 @@ import com.rayner.peregrine.ui.theme.AlertBadgeBg
 import com.rayner.peregrine.ui.theme.AlertBadgeText
 import com.rayner.peregrine.ui.theme.DetectionColors
 import com.rayner.peregrine.ui.theme.LiveDot
+import kotlinx.coroutines.delay
 import okhttp3.OkHttpClient
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -92,10 +93,15 @@ fun LiveViewScreen(
         topBar = {
             TopAppBar(
                 title = { 
+                    val title = if (isDetail) {
+                        uiState.cameras.find { it.name == initialCameraName }?.displayName ?: initialCameraName!!
+                    } else {
+                        "Cameras"
+                    }
                     Text(
-                        text = initialCameraName ?: "Cameras",
+                        text = title,
                         style = MaterialTheme.typography.headlineSmall
-                    ) 
+                    )
                 },
                 navigationIcon = {
                     if (isDetail && onBack != null) {
@@ -144,7 +150,7 @@ fun LiveHomeContent(
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(1),
-                contentPadding = PaddingValues(bottom = 16.dp),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
@@ -185,11 +191,11 @@ fun AlertsCarousel(
     baseUrl: String,
     imageLoader: coil3.ImageLoader
 ) {
-    Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
+    Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -262,7 +268,7 @@ fun SectionDivider(text: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 0.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Surface(
@@ -298,6 +304,27 @@ fun SectionDivider(text: String) {
 }
 
 @Composable
+fun MotionDot(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "motion")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "blink"
+    )
+
+    Box(
+        modifier = modifier
+            .size(14.dp)
+            .background(LiveDot.copy(alpha = alpha), CircleShape)
+            .border(1.5.dp, Color.White, CircleShape)
+    )
+}
+
+@Composable
 fun CameraCard(
     camera: Camera,
     imageLoader: coil3.ImageLoader,
@@ -324,7 +351,7 @@ fun CameraCard(
             val context = LocalContext.current
             var lastSuccessfulPainter by remember { mutableStateOf<androidx.compose.ui.graphics.painter.Painter?>(null) }
 
-            // 1. Static/Caching layer
+            // 1. Static/Instant Layer: Loads from disk cache immediately
             AsyncImage(
                 model = coil3.request.ImageRequest.Builder(context)
                     .data(camera.snapshotUrl)
@@ -336,19 +363,20 @@ fun CameraCard(
                 contentScale = ContentScale.Fit
             )
 
-            // 2. Live layer
+            // 2. Live Layer: Fetches fresh data every 1s/5s
             AsyncImage(
                 model = coil3.request.ImageRequest.Builder(context)
                     .data(snapshotUrlWithCache)
                     .build(),
                 imageLoader = imageLoader,
-                contentDescription = camera.name,
+                contentDescription = camera.displayName,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
                 placeholder = lastSuccessfulPainter,
                 onSuccess = { state ->
                     lastSuccessfulPainter = state.painter
-                    // Background: update the static disk cache slot with this new image
+                    // Overwrite the persistent disk cache slot with this fresh image
+                    // so the "Instant Layer" is fresh on the next app startup.
                     imageLoader.enqueue(
                         coil3.request.ImageRequest.Builder(context)
                             .data(snapshotUrlWithCache)
@@ -359,6 +387,14 @@ fun CameraCard(
             )
 
             // Overlays
+            if (camera.hasMotion) {
+                MotionDot(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(12.dp)
+                )
+            }
+
             Surface(
                 color = Color(0x9E141218),
                 shape = RoundedCornerShape(12.dp),
@@ -367,7 +403,7 @@ fun CameraCard(
                     .padding(12.dp)
             ) {
                 Text(
-                    text = camera.name,
+                    text = camera.displayName,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurface
@@ -443,7 +479,7 @@ fun CameraDetailContent(
                 AsyncImage(
                     model = camera.snapshotUrl,
                     imageLoader = viewModel.imageLoader,
-                    contentDescription = camera.name,
+                    contentDescription = camera.displayName,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit
                 )

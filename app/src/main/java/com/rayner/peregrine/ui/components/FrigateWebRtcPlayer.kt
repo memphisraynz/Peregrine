@@ -54,8 +54,9 @@ fun FrigateWebRtcPlayer(
                 }
                 override fun onFrameResolutionChanged(p0: Int, p1: Int, p2: Int) {}
             })
-            setEnableHardwareScaler(false)
+            setEnableHardwareScaler(true)
             setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
+            setMirror(false)
         }
     }
 
@@ -97,22 +98,11 @@ fun FrigateWebRtcPlayer(
     }
 
     Box(modifier = modifier.background(Color.Black), contentAlignment = Alignment.Center) {
-        // By using Modifier.aspectRatio(aspectRatio), we ensure the AndroidView itself
-        // is exactly the shape of the video, making cropping impossible.
         AndroidView(
             factory = {
-                FrameLayout(it).apply {
-                    val lp = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        Gravity.CENTER
-                    )
-                    addView(renderer, lp)
-                }
+                renderer
             },
-            modifier = Modifier
-                .fillMaxSize()
-                .aspectRatio(aspectRatio)
+            modifier = Modifier.fillMaxSize()
         )
         if (isLoading) {
             CircularProgressIndicator(color = Color.White)
@@ -151,7 +141,7 @@ private class WebRtcPeerConnectionHolder(
         )
         factory = PeerConnectionFactory.builder()
             .setAudioDeviceModule(audioDeviceModule)
-            .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
+            .setVideoDecoderFactory(HardwareVideoDecoderFactory(eglBase.eglBaseContext))
             .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
             .createPeerConnectionFactory()
     }

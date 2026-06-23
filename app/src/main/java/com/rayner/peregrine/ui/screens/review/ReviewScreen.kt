@@ -25,6 +25,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.rayner.peregrine.data.local.entity.ReviewItemEntity
 import com.rayner.peregrine.ui.theme.DetectionColors
+import com.rayner.peregrine.util.formatCameraName
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -217,7 +218,7 @@ fun ReviewItemCard(
                     .padding(8.dp)
             ) {
                 Text(
-                    text = camera,
+                    text = formatCameraName(camera),
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface
