@@ -17,4 +17,7 @@ interface ReviewDao {
 
     @Query("DELETE FROM review_items")
     suspend fun clearAll()
+
+    @Query("UPDATE review_items SET hasBeenReviewed = :reviewed WHERE id IN (:ids)")
+    suspend fun updateReviewedStatus(ids: List<String>, reviewed: Boolean)
 }

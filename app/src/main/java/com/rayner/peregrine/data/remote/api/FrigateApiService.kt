@@ -1,11 +1,13 @@
 package com.rayner.peregrine.data.remote.api
 
 import com.rayner.peregrine.data.remote.model.LoginRequest
+import com.rayner.peregrine.data.remote.model.ReviewViewedRequest
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Query
+import retrofit2.http.Path
 
 interface FrigateApiService {
     @POST("api/login/")
@@ -37,6 +39,9 @@ interface FrigateApiService {
         @Query("camera") camera: String? = null
     ): List<Map<String, Any>>
 
+    @POST("api/reviews/viewed")
+    suspend fun markReviewed(@Body body: ReviewViewedRequest): Response<Unit>
+
     @GET("api/logs/{service}")
-    suspend fun getLogs(@retrofit2.http.Path("service") service: String): String
+    suspend fun getLogs(@Path("service") service: String): String
 }

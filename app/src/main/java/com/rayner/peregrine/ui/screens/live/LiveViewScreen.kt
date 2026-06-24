@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,6 +39,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.rayner.peregrine.data.local.entity.ReviewItemEntity
@@ -65,6 +69,30 @@ fun LiveViewScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isDetail = initialCameraName != null
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            val window = (context as? android.app.Activity)?.window
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    viewModel.onResume()
+                    viewModel.loadData() // Refresh data when returning to the screen
+                    window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+                Lifecycle.Event.ON_PAUSE -> {
+                    viewModel.onPause()
+                    window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.onPause()
+        }
+    }
 
     LaunchedEffect(initialCameraName, autoStartLive, uiState.cameras) {
         if (autoStartLive && initialCameraName != null) {
@@ -72,19 +100,6 @@ fun LiveViewScreen(
             if (targetCamera != null && !targetCamera.isLive) {
                 viewModel.setLive(initialCameraName, true)
             }
-        }
-    }
-
-    // Keep screen awake when in detail view
-    DisposableEffect(isDetail) {
-        if (isDetail) {
-            val window = (context as? android.app.Activity)?.window
-            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            onDispose {
-                window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            }
-        } else {
-            onDispose {}
         }
     }
 
@@ -174,7 +189,6 @@ fun LiveHomeContent(
                         CameraCard(
                             camera = camera,
                             imageLoader = viewModel.imageLoader,
-                            snapshotTimestamp = uiState.snapshotTimestamp,
                             onClick = { onCameraClick(camera.name) }
                         )
                     }
@@ -199,24 +213,23 @@ fun AlertsCarousel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Active alerts",
+                text = "Recent alerts",
                 style = MaterialTheme.typography.titleMedium
             )
-            Spacer(modifier = Modifier.width(8.dp))
-            Badge(
-                containerColor = AlertBadgeBg,
-                contentColor = AlertBadgeText
-            ) {
-                Text(reviews.size.toString())
-            }
         }
 
+        val scrollState = rememberLazyListState()
+
         LazyRow(
+            state = scrollState,
+            modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             items(reviews, key = { it.id }) { review ->
-                AlertCard(review, onReviewClick, baseUrl, imageLoader)
+                Box(modifier = Modifier.animateItem()) {
+                    AlertCard(review, onReviewClick, baseUrl, imageLoader)
+                }
             }
         }
     }
@@ -328,7 +341,6 @@ fun MotionDot(modifier: Modifier = Modifier) {
 fun CameraCard(
     camera: Camera,
     imageLoader: coil3.ImageLoader,
-    snapshotTimestamp: Long,
     onClick: () -> Unit
 ) {
     Card(
@@ -342,6 +354,7 @@ fun CameraCard(
         )
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            val snapshotTimestamp = camera.snapshotTimestamp
             val snapshotUrlWithCache = if (camera.snapshotUrl.contains("?")) {
                 "${camera.snapshotUrl}&cache=$snapshotTimestamp"
             } else {
@@ -355,6 +368,7 @@ fun CameraCard(
             AsyncImage(
                 model = coil3.request.ImageRequest.Builder(context)
                     .data(camera.snapshotUrl)
+                    .memoryCacheKey(camera.name)
                     .diskCacheKey(camera.name)
                     .build(),
                 imageLoader = imageLoader,
@@ -367,6 +381,10 @@ fun CameraCard(
             AsyncImage(
                 model = coil3.request.ImageRequest.Builder(context)
                     .data(snapshotUrlWithCache)
+                    .memoryCacheKey(camera.name)
+                    .diskCacheKey(camera.name)
+                    .memoryCachePolicy(coil3.request.CachePolicy.WRITE_ONLY)
+                    .diskCachePolicy(coil3.request.CachePolicy.WRITE_ONLY)
                     .build(),
                 imageLoader = imageLoader,
                 contentDescription = camera.displayName,
@@ -375,14 +393,6 @@ fun CameraCard(
                 placeholder = lastSuccessfulPainter,
                 onSuccess = { state ->
                     lastSuccessfulPainter = state.painter
-                    // Overwrite the persistent disk cache slot with this fresh image
-                    // so the "Instant Layer" is fresh on the next app startup.
-                    imageLoader.enqueue(
-                        coil3.request.ImageRequest.Builder(context)
-                            .data(snapshotUrlWithCache)
-                            .diskCacheKey(camera.name)
-                            .build()
-                    )
                 }
             )
 
@@ -443,6 +453,7 @@ fun CameraDetailContent(
     onReviewClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val camera = uiState.cameras.firstOrNull { it.name == cameraName } ?: return
     val okHttpClient = viewModel.okHttpClient
 
@@ -477,7 +488,11 @@ fun CameraDetailContent(
                 }
             } else {
                 AsyncImage(
-                    model = camera.snapshotUrl,
+                    model = coil3.request.ImageRequest.Builder(context)
+                        .data(camera.snapshotUrl)
+                        .memoryCacheKey(camera.name)
+                        .diskCacheKey(camera.name)
+                        .build(),
                     imageLoader = viewModel.imageLoader,
                     contentDescription = camera.displayName,
                     modifier = Modifier.fillMaxSize(),

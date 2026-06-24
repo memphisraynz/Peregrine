@@ -9,6 +9,7 @@ import com.rayner.peregrine.data.local.entity.ExploreEventEntity
 import com.rayner.peregrine.data.local.entity.ReviewItemEntity
 import com.rayner.peregrine.data.local.entity.ServerConfigEntity
 import com.rayner.peregrine.data.remote.api.FrigateApiService
+import com.rayner.peregrine.data.remote.model.ReviewViewedRequest
 import com.rayner.peregrine.domain.model.Camera
 import com.rayner.peregrine.domain.repository.FrigateRepository
 import kotlinx.coroutines.Dispatchers
@@ -68,14 +69,19 @@ class FrigateRepositoryImpl @Inject constructor(
         val expiresAt = config.authCookieExpiresAt ?: return
         if (expiresAt <= System.currentTimeMillis()) return
 
-        val cookie = Cookie.Builder()
+        val cookieBuilder = Cookie.Builder()
             .name("frigate_token")
             .value(tokenCookie)
             .expiresAt(expiresAt)
             .httpOnly()
             .path("/")
             .hostOnlyDomain(baseUrl.host)
-            .build()
+            
+        if (baseUrl.isHttps) {
+            cookieBuilder.secure()
+        }
+        
+        val cookie = cookieBuilder.build()
 
         cookieJar.saveFromResponse(baseUrl, listOf(cookie))
     }
@@ -162,6 +168,14 @@ class FrigateRepositoryImpl @Inject constructor(
                 val objects = (data?.get("objects") as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
                 val subLabels = (data?.get("sub_labels") as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
                 
+                val hasBeenReviewed = when {
+                    item["has_been_reviewed"] is Boolean -> item["has_been_reviewed"] as Boolean
+                    item["has_been_reviewed"] is Number -> (item["has_been_reviewed"] as Number).toInt() != 0
+                    item["reviewed"] is Boolean -> item["reviewed"] as Boolean
+                    item["reviewed"] is Number -> (item["reviewed"] as Number).toInt() != 0
+                    else -> false // Default to false so new alerts show up if field is missing
+                }
+                
                 ReviewItemEntity(
                     id = item["id"] as? String ?: "",
                     camera = item["camera"] as? String ?: "",
@@ -169,11 +183,7 @@ class FrigateRepositoryImpl @Inject constructor(
                     startTime = (item["start_time"] as? Number)?.toDouble() ?: 0.0,
                     endTime = (item["end_time"] as? Number)?.toDouble(),
                     thumbPath = item["thumb_path"] as? String ?: "",
-                    hasBeenReviewed = when (val h = item["has_been_reviewed"]) {
-                        is Boolean -> h
-                        is Number -> h.toInt() != 0
-                        else -> true
-                    },
+                    hasBeenReviewed = hasBeenReviewed,
                     primaryLabel = objects.firstOrNull(),
                     objects = objects,
                     subLabels = subLabels
@@ -289,5 +299,19 @@ class FrigateRepositoryImpl @Inject constructor(
 
     override suspend fun getServerLogs(service: String): Result<String> = withContext(Dispatchers.IO) {
         try { Result.success(apiService.getLogs(service)) } catch (e: Exception) { Result.failure(e) }
+    }
+
+    override suspend fun markReviewed(ids: List<String>): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.markReviewed(ReviewViewedRequest(ids = ids, reviewed = true))
+            if (response.isSuccessful) {
+                reviewDao.updateReviewedStatus(ids, true)
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Failed to mark as reviewed: ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 }

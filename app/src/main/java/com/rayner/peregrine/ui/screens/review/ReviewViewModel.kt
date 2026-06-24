@@ -44,9 +44,10 @@ class ReviewViewModel @Inject constructor(
         serverUrlManager.currentUrl
     ) { items, tab, loading, error, url ->
         val filtered = items.filter { item ->
+            val severity = item.severity.lowercase()
             when (tab) {
-                ReviewTab.ALERTS -> item.severity == "alert"
-                ReviewTab.DETECTIONS -> item.severity == "detection"
+                ReviewTab.ALERTS -> severity == "alert"
+                ReviewTab.DETECTIONS -> severity == "detection"
             }
         }
         ReviewUiState(
@@ -101,6 +102,12 @@ class ReviewViewModel @Inject constructor(
             repository.refreshReviewItems(limit = 50, severity = "detection")
 
             _isLoading.value = false
+        }
+    }
+
+    fun markAsReviewed(id: String) {
+        viewModelScope.launch {
+            repository.markReviewed(listOf(id))
         }
     }
 }

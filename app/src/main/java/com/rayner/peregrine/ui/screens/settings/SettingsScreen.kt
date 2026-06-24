@@ -86,6 +86,28 @@ fun SettingsScreen(
                             viewModel.setVodBuffer(seconds)
                         }
                     )
+                    SettingsDropdownRow(
+                        icon = Icons.Default.Notifications,
+                        title = "Alerts filter",
+                        selectedOption = when (uiState.alertsFilterDays) {
+                            0 -> "All"
+                            -12 -> "Last 12 hours"
+                            1 -> "Last 24 hours"
+                            else -> "Last ${uiState.alertsFilterDays} days"
+                        },
+                        options = listOf("All", "Last 12 hours", "Last 24 hours", "Last 2 days", "Last 3 days"),
+                        onOptionSelected = { option ->
+                            val days = when (option) {
+                                "All" -> 0
+                                "Last 12 hours" -> -12
+                                "Last 24 hours" -> 1
+                                "Last 2 days" -> 2
+                                "Last 3 days" -> 3
+                                else -> 1
+                            }
+                            viewModel.setAlertsFilterDays(days)
+                        }
+                    )
                     SettingsToggleRow(
                         icon = Icons.Default.Notifications,
                         title = "Enable notifications",

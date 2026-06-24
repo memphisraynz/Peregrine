@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -60,6 +61,10 @@ fun ReviewPlayerScreen(
             
             videoUrl = "$base/vod/$camera/start/$start/end/$end/master.m3u8"
             thumbUrl = "$base/api/review/thumbnail/$eventId"
+
+            if (!item.hasBeenReviewed) {
+                viewModel.markAsReviewed(eventId)
+            }
         }
     }
 

@@ -35,4 +35,6 @@ interface FrigateRepository {
     suspend fun getReviewItems(): Result<List<Map<String, Any>>>
     suspend fun getCameras(): Result<List<Camera>>
     suspend fun getServerLogs(service: String = "frigate"): Result<String>
+
+    suspend fun markReviewed(ids: List<String>): Result<Unit>
 }

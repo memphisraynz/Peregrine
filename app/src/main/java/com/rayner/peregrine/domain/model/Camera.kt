@@ -18,6 +18,7 @@ data class Camera(
     val isSpeakerEnabled: Boolean = false,
     val useHls: Boolean = true,
     val hasMotion: Boolean = false,
+    val snapshotTimestamp: Long = System.currentTimeMillis(),
     val lastReviewItem: com.rayner.peregrine.data.local.entity.ReviewItemEntity? = null
 ) {
     val displayName: String

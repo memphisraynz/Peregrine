@@ -20,6 +20,7 @@ data class SettingsUiState(
     val username: String = "",
     val defaultPlayerType: String = "hls",
     val vodBuffer: Int = 5,
+    val alertsFilterDays: Int = 1,
     val isLoading: Boolean = false
 )
 
@@ -49,7 +50,8 @@ class SettingsViewModel @Inject constructor(
                 val p = prefs ?: PreferenceEntity()
                 _uiState.update { it.copy(
                     defaultPlayerType = p.defaultPlayerType,
-                    vodBuffer = p.vodBuffer
+                    vodBuffer = p.vodBuffer,
+                    alertsFilterDays = p.alertsFilterDays
                 ) }
             }
         }
@@ -66,6 +68,13 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val current = repository.getPreferencesFlow().firstOrNull() ?: PreferenceEntity()
             repository.updatePreferences(current.copy(vodBuffer = seconds))
+        }
+    }
+
+    fun setAlertsFilterDays(days: Int) {
+        viewModelScope.launch {
+            val current = repository.getPreferencesFlow().firstOrNull() ?: PreferenceEntity()
+            repository.updatePreferences(current.copy(alertsFilterDays = days))
         }
     }
 
