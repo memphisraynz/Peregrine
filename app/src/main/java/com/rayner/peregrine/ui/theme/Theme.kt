@@ -29,7 +29,7 @@ private val PeregrineDark = darkColorScheme(
 
 @Composable
 fun PeregrineTheme(
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {

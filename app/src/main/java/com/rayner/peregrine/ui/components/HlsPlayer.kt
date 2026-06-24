@@ -2,8 +2,10 @@ package com.rayner.peregrine.ui.components
 
 import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
@@ -24,6 +26,9 @@ fun HlsPlayer(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+
+    val backgroundColor = MaterialTheme.colorScheme.surfaceContainer.toArgb()
+
     val exoPlayer = remember {
         val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
         val hlsMediaSource = HlsMediaSource.Factory(dataSourceFactory)
@@ -60,6 +65,9 @@ fun HlsPlayer(
                 player = exoPlayer
                 useController = false
                 setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+                setBackgroundColor(backgroundColor)
+                findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)
+                    ?.setBackgroundColor(backgroundColor)
             }
         },
         modifier = modifier.fillMaxSize()

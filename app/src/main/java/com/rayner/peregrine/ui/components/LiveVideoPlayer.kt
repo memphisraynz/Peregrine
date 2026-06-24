@@ -4,10 +4,12 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -37,7 +39,9 @@ fun LiveVideoPlayer(
 ) {
     val context = LocalContext.current
     var isPlayerReady by remember { mutableStateOf(false) }
-    
+
+    val backgroundColor = MaterialTheme.colorScheme.surfaceContainer.toArgb()
+
     val exoPlayer = remember {
         val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
         ExoPlayer.Builder(context)
@@ -90,6 +94,9 @@ fun LiveVideoPlayer(
                     controllerAutoShow = showController
                     controllerHideOnTouch = showController
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
+                    setBackgroundColor(backgroundColor)
+                    findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)
+                        ?.setBackgroundColor(backgroundColor)
                 }
             },
             modifier = Modifier.fillMaxSize()

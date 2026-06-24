@@ -331,9 +331,9 @@ fun MotionDot(modifier: Modifier = Modifier) {
 
     Box(
         modifier = modifier
-            .size(14.dp)
+            .size(10.dp)
             .background(LiveDot.copy(alpha = alpha), CircleShape)
-            .border(1.5.dp, Color.White, CircleShape)
+            .border(1.0.dp, Color.White, CircleShape)
     )
 }
 

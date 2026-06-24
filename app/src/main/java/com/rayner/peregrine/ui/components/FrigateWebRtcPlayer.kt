@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,12 +98,12 @@ fun FrigateWebRtcPlayer(
         }
     }
 
-    Box(modifier = modifier.background(Color.Black), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainer), contentAlignment = Alignment.Center) {
         AndroidView(
             factory = {
                 renderer
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.aspectRatio(aspectRatio)
         )
         if (isLoading) {
             CircularProgressIndicator(color = Color.White)
