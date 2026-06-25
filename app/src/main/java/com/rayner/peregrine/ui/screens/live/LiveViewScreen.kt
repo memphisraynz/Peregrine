@@ -454,8 +454,25 @@ fun CameraDetailContent(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val camera = uiState.cameras.firstOrNull { it.name == cameraName } ?: return
+    val camera = uiState.cameras.firstOrNull { it.name == cameraName }
     val okHttpClient = viewModel.okHttpClient
+
+    if (camera == null) {
+        Box(
+            modifier = modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            if (uiState.isLoading) {
+                CircularProgressIndicator()
+            } else {
+                Text(
+                    text = "Camera \"$cameraName\" not found",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        return
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         Box(

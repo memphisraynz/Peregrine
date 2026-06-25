@@ -2,6 +2,7 @@ package com.rayner.peregrine.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
@@ -37,6 +38,15 @@ fun MainAppScaffold(repository: FrigateRepository) {
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         )
     }
+    var hasNotificationPermission by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
+        )
+    }
     var showMicPermissionRationale by remember { mutableStateOf(false) }
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
@@ -46,9 +56,18 @@ fun MainAppScaffold(repository: FrigateRepository) {
         showMicPermissionRationale = !granted
     }
 
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasNotificationPermission = granted
+    }
+
     LaunchedEffect(Unit) {
         if (!hasMicPermission) {
             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
@@ -61,8 +80,13 @@ fun MainAppScaffold(repository: FrigateRepository) {
     }
 
     if (startDestination == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
         }
         return
     }
@@ -110,7 +134,8 @@ fun MainAppScaffold(repository: FrigateRepository) {
                                 unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             ),
                             onClick = {
-                                navController.navigate(screen.route) {
+                                val route = if (screen is Screen.Explore) screen.createRoute() else screen.route
+                                navController.navigate(route) {
                                     popUpTo(navController.graph.findStartDestination().id) {
                                         saveState = true
                                     }

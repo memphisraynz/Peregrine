@@ -1,5 +1,9 @@
 package com.rayner.peregrine.ui.screens.settings
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,6 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
@@ -21,9 +26,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.google.firebase.messaging.FirebaseMessaging
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,6 +40,19 @@ fun SettingsScreen(
     onViewLogs: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    var fcmToken by remember { mutableStateOf("Fetching...") }
+
+    LaunchedEffect(Unit) {
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                fcmToken = task.result
+                android.util.Log.d("PeregrineFCM", "Token: $fcmToken")
+            } else {
+                fcmToken = "Failed to fetch"
+            }
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -143,6 +163,17 @@ fun SettingsScreen(
                         title = "About Peregrine",
                         subtitle = "Version 1.0.0",
                         onClick = { /* Show about */ }
+                    )
+                    SettingsRow(
+                        icon = Icons.Default.ContentCopy,
+                        title = "FCM Registration Token",
+                        subtitle = fcmToken,
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("FCM Token", fcmToken)
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(context, "Token copied to clipboard", Toast.LENGTH_SHORT).show()
+                        }
                     )
                 }
             }

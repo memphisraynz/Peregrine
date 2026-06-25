@@ -16,6 +16,7 @@ import com.rayner.peregrine.domain.repository.FrigateRepository
 import androidx.compose.runtime.remember
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 
 @Composable
 fun PeregrineNavGraph(
@@ -36,7 +37,10 @@ fun PeregrineNavGraph(
                 }
             })
         }
-        composable(Screen.Live.route) {
+        composable(
+            route = Screen.Live.route,
+            deepLinks = listOf(navDeepLink { uriPattern = "${Screen.BASE_URI}home" })
+        ) {
             LiveViewScreen(
                 onReviewClick = { eventId ->
                     navController.navigate(Screen.ReviewPlayer.createRoute(eventId))
@@ -52,19 +56,21 @@ fun PeregrineNavGraph(
                 navArgument("cameraName") { type = NavType.StringType },
                 navArgument("autoplay") {
                     type = NavType.BoolType
-                    defaultValue = false
+                    defaultValue = true
                 }
-            )
+            ),
+            deepLinks = listOf(navDeepLink { uriPattern = "${Screen.BASE_URI}camera/{cameraName}" })
         ) { backStackEntry ->
             val cameraName = backStackEntry.arguments?.getString("cameraName") ?: ""
-            val autoplay = backStackEntry.arguments?.getBoolean("autoplay") ?: false
+            val autoplay = backStackEntry.arguments?.getBoolean("autoplay") ?: true
             LiveViewScreen(
                 initialCameraName = cameraName,
                 autoStartLive = autoplay,
                 onReviewClick = { eventId ->
                     navController.navigate(Screen.ReviewPlayer.createRoute(eventId))
                 },
-                onCameraClick = { }
+                onCameraClick = { },
+                onBack = { navController.popBackStack() }
             )
         }
 
@@ -75,7 +81,8 @@ fun PeregrineNavGraph(
         }
         composable(
             route = Screen.ReviewPlayer.route,
-            arguments = listOf(navArgument("eventId") { type = NavType.StringType })
+            arguments = listOf(navArgument("eventId") { type = NavType.StringType }),
+            deepLinks = listOf(navDeepLink { uriPattern = "${Screen.BASE_URI}review/{eventId}" })
         ) { backStackEntry ->
             val eventId = backStackEntry.arguments?.getString("eventId") ?: ""
             ReviewPlayerScreen(
@@ -84,10 +91,21 @@ fun PeregrineNavGraph(
                 onBack = { navController.popBackStack() }
             )
         }
-        composable(Screen.Explore.route) {
+        composable(
+            route = Screen.Explore.route,
+            arguments = listOf(navArgument("eventId") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            }),
+            deepLinks = listOf(navDeepLink { uriPattern = "${Screen.BASE_URI}event/{eventId}" })
+        ) {
             ExploreScreen()
         }
-        composable(Screen.Settings.route) {
+        composable(
+            route = Screen.Settings.route,
+            deepLinks = listOf(navDeepLink { uriPattern = "${Screen.BASE_URI}settings" })
+        ) {
             SettingsScreen(
                 onLogout = {
                     navController.navigate(Screen.Login.route) {

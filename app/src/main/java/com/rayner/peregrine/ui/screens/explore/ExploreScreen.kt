@@ -154,9 +154,11 @@ fun ExploreScreen(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(filteredEvents, key = { it.id }) { event ->
+                            val isHighlighted = uiState.highlightedEventId == event.id
                             EventGridCard(
                                 event = event,
-                                imageLoader = viewModel.imageLoader
+                                imageLoader = viewModel.imageLoader,
+                                isHighlighted = isHighlighted
                             )
                         }
                     }
@@ -169,7 +171,8 @@ fun ExploreScreen(
 @Composable
 fun EventGridCard(
     event: ExploreEventEntity,
-    imageLoader: coil3.ImageLoader
+    imageLoader: coil3.ImageLoader,
+    isHighlighted: Boolean = false
 ) {
     val camera = event.camera
     val label = event.label
@@ -189,7 +192,8 @@ fun EventGridCard(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
-        )
+        ),
+        border = if (isHighlighted) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             AsyncImage(

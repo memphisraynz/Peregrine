@@ -1,4 +1,7 @@
 <resources>
     <string name="app_name">Peregrine</string>
     <string name="camera_microphone_permission_rationale">Microphone access is required for camera talkback.</string>
+    <string name="default_notification_channel_id">frigate_alerts</string>
+    <string name="default_notification_channel_name">Frigate Alerts</string>
+    <string name="default_notification_channel_description">Notifications for person and object detections.</string>
 </resources>

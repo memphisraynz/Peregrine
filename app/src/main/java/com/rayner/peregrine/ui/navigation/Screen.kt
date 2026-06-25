@@ -11,7 +11,9 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     object Login : Screen("login", "Login")
     object Live : Screen("live", "Cameras", Icons.Outlined.Videocam)
     object Review : Screen("review", "Review", Icons.Outlined.History)
-    object Explore : Screen("explore", "Explore", Icons.Outlined.CompassCalibration)
+    object Explore : Screen("explore?eventId={eventId}", "Explore", Icons.Outlined.CompassCalibration) {
+        fun createRoute(eventId: String? = null) = if (eventId != null) "explore?eventId=$eventId" else "explore"
+    }
     object Settings : Screen("settings", "Settings", Icons.Outlined.Settings)
     object Logs : Screen("logs", "Logs")
     object ReviewPlayer : Screen("review_player/{eventId}", "Clip") {
@@ -19,6 +21,10 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     }
     object CameraDetail : Screen("camera/{cameraName}?autoplay={autoplay}", "Camera") {
         fun createRoute(cameraName: String, autoplay: Boolean = false) = "camera/$cameraName?autoplay=$autoplay"
+    }
+
+    companion object {
+        const val BASE_URI = "frigate://"
     }
 }
 

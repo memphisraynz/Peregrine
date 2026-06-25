@@ -1,5 +1,6 @@
 package com.rayner.peregrine.ui.screens.explore
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rayner.peregrine.data.local.entity.ExploreEventEntity
@@ -18,7 +19,8 @@ data class ExploreUiState(
     val selectedLabels: Set<String> = emptySet(),
     val isLoading: Boolean = false,
     val error: String? = null,
-    val baseUrl: String = ""
+    val baseUrl: String = "",
+    val highlightedEventId: String? = null
 )
 
 @HiltViewModel
@@ -26,9 +28,11 @@ class ExploreViewModel @Inject constructor(
     private val repository: FrigateRepository,
     private val serverUrlManager: ServerUrlManager,
     val imageLoader: coil3.ImageLoader,
-    val okHttpClient: OkHttpClient
+    val okHttpClient: OkHttpClient,
+    savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
+    private val highlightedEventId: String? = savedStateHandle["eventId"]
     private val _selectedLabels = MutableStateFlow(emptySet<String>())
     private val _isLoading = MutableStateFlow(false)
     private val _error = MutableStateFlow<String?>(null)
@@ -49,7 +53,8 @@ class ExploreViewModel @Inject constructor(
             selectedLabels = selected,
             isLoading = loading,
             error = error,
-            baseUrl = url?.removeSuffix("/") ?: ""
+            baseUrl = url?.removeSuffix("/") ?: "",
+            highlightedEventId = highlightedEventId
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ExploreUiState())
 
