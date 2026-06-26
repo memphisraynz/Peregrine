@@ -6,31 +6,35 @@ import okhttp3.Response
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Interceptor that replaces the base URL of outgoing requests with the
+ * user-configured server URL from [ServerUrlManager].
+ */
 @Singleton
 class DynamicBaseUrlInterceptor @Inject constructor(
     private val serverUrlManager: ServerUrlManager
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
-        var request = chain.request()
-        val newUrlString = serverUrlManager.getUrl()
+        val request = chain.request()
+        val configUrlString = serverUrlManager.getUrl()
 
-        if (newUrlString != null && newUrlString.isNotBlank()) {
-            val newUrl = newUrlString.toHttpUrlOrNull()
-            if (newUrl != null) {
-                val currentUrl = request.url
-                // Only intercept if the host is our placeholder or if we have a valid override
-                if (currentUrl.host == "frigate.local") {
-                    val newFullUrl = currentUrl.newBuilder()
-                        .scheme(newUrl.scheme)
-                        .host(newUrl.host)
-                        .port(newUrl.port)
-                        .build()
-                    request = request.newBuilder()
-                        .url(newFullUrl)
-                        .build()
-                }
-            }
+        if (configUrlString.isNullOrBlank()) {
+            return chain.proceed(request)
         }
-        return chain.proceed(request)
+
+        val configUrl = configUrlString.toHttpUrlOrNull() ?: return chain.proceed(request)
+        
+        // Reconstruct the URL using the user-provided server details
+        val newFullUrl = request.url.newBuilder()
+            .scheme(configUrl.scheme)
+            .host(configUrl.host)
+            .port(configUrl.port)
+            .build()
+            
+        return chain.proceed(
+            request.newBuilder()
+                .url(newFullUrl)
+                .build()
+        )
     }
 }
