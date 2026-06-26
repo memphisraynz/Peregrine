@@ -19,7 +19,7 @@ interface FrigateRepository {
     suspend fun refreshReviewItems(
         limit: Int? = null,
         severity: String? = null,
-        reviewed: Int? = null
+        reviewed: Int? = null,
     ): Result<Unit>
     
     fun getExploreEventsFlow(): Flow<List<ExploreEventEntity>>

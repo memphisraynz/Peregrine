@@ -89,8 +89,8 @@ fun ReviewScreen(
                                 inactiveContainerColor = Color.Transparent,
                                 inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 activeBorderColor = MaterialTheme.colorScheme.outline,
-                                inactiveBorderColor = MaterialTheme.colorScheme.outline
-                            )
+                                inactiveBorderColor = MaterialTheme.colorScheme.outline,
+                            ),
                         ) {
                             Text(tab.name.lowercase().replaceFirstChar { it.uppercase() })
                         }
@@ -134,15 +134,15 @@ fun DateHeader(text: String) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelLarge.copy(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Medium,
-                fontSize = 13.sp
-            )
+                fontSize = 13.sp,
+            ),
         )
         Spacer(modifier = Modifier.width(8.dp))
         HorizontalDivider(
@@ -158,7 +158,7 @@ fun ReviewItemCard(
     item: ReviewItemEntity,
     baseUrl: String,
     imageLoader: coil3.ImageLoader,
-    onClick: () -> Unit
+    onClick: () -> Unit,
 ) {
     val camera = item.camera
     val displayLabel = getDisplayLabel(item)
@@ -186,8 +186,8 @@ fun ReviewItemCard(
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer
-        )
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ),
     ) {
         Box(modifier = Modifier.aspectRatio(16 / 9f)) {
             AsyncImage(
@@ -240,7 +240,7 @@ fun ReviewItemCard(
                         .align(Alignment.TopEnd)
                         .padding(8.dp)
                         .size(8.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape),
                 )
             }
         }
@@ -252,7 +252,7 @@ fun DetectionChip(label: String, colors: DetectionColors.Pair, modifier: Modifie
     Surface(
         color = colors.container,
         shape = RoundedCornerShape(8.dp),
-        modifier = modifier
+        modifier = modifier,
     ) {
         Text(
             text = label.replaceFirstChar { it.uppercase() },

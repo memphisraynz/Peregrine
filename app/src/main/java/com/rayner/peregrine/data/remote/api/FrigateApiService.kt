@@ -28,7 +28,7 @@ interface FrigateApiService {
         @Query("label") label: String? = null,
         @Query("zone") zone: String? = null,
         @Query("limit") limit: Int? = null,
-        @Query("include_thumbnails") includeThumbnails: Int? = 1
+        @Query("include_thumbnails") includeThumbnails: Int? = 1,
     ): List<Map<String, Any>>
 
     @GET("api/review")
@@ -36,7 +36,7 @@ interface FrigateApiService {
         @Query("limit") limit: Int? = null,
         @Query("severity") severity: String? = null,
         @Query("reviewed") reviewed: Int? = null,
-        @Query("camera") camera: String? = null
+        @Query("camera") camera: String? = null,
     ): List<Map<String, Any>>
 
     @POST("api/reviews/viewed")
