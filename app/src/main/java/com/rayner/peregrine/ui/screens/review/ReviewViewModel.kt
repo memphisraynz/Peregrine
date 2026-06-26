@@ -6,6 +6,7 @@ import com.rayner.peregrine.data.local.entity.ReviewItemEntity
 import com.rayner.peregrine.data.remote.api.ServerUrlManager
 import com.rayner.peregrine.domain.repository.FrigateRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import coil3.ImageLoader
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -21,7 +22,7 @@ data class ReviewUiState(
     val selectedTab: ReviewTab = ReviewTab.ALERTS,
     val isLoading: Boolean = false,
     val error: String? = null,
-    val baseUrl: String = ""
+    val baseUrl: String = "",
 )
 
 @HiltViewModel
@@ -29,11 +30,11 @@ class ReviewViewModel @Inject constructor(
     private val repository: FrigateRepository,
     private val serverUrlManager: ServerUrlManager,
     val okHttpClient: OkHttpClient,
-    val imageLoader: coil3.ImageLoader
+    val imageLoader: ImageLoader,
 ) : ViewModel() {
 
     private val _selectedTab = MutableStateFlow(ReviewTab.ALERTS)
-    private val _isLoading = MutableStateFlow(false)
+    private val _isLoading = MutableStateFlow(value = false)
     private val _error = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<ReviewUiState> = combine(
@@ -41,7 +42,7 @@ class ReviewViewModel @Inject constructor(
         _selectedTab,
         _isLoading,
         _error,
-        serverUrlManager.currentUrl
+        serverUrlManager.currentUrl,
     ) { items, tab, loading, error, url ->
         val filtered = items.filter { item ->
             val severity = item.severity.lowercase()
@@ -56,7 +57,7 @@ class ReviewViewModel @Inject constructor(
             selectedTab = tab,
             isLoading = loading,
             error = error,
-            baseUrl = url?.removeSuffix("/") ?: ""
+            baseUrl = url?.removeSuffix("/") ?: "",
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ReviewUiState())
 

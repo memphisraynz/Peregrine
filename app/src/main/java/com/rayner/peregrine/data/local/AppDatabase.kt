@@ -18,10 +18,10 @@ import com.rayner.peregrine.data.local.entity.ReviewItemEntity
         ReviewItemEntity::class,
         ExploreEventEntity::class,
         CameraEntity::class,
-        PreferenceEntity::class
+        PreferenceEntity::class,
     ],
     version = 4, // Increment for PreferenceEntity alertsFilterDays
-    exportSchema = false
+    exportSchema = false,
 )
 @TypeConverters(ReviewItemConverters::class)
 abstract class AppDatabase : RoomDatabase() {

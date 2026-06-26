@@ -13,12 +13,6 @@ interface FrigateApiService {
     @POST("api/login/")
     suspend fun login(@Body body: LoginRequest): Response<Unit>
 
-    @GET("api/version")
-    suspend fun getVersion(): String
-
-    @GET("api/stats")
-    suspend fun getStats(): Map<String, Any>
-
     @GET("api/config")
     suspend fun getConfig(): Map<String, Any>
 

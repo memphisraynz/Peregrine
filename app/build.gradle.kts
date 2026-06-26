@@ -13,7 +13,7 @@ android {
     defaultConfig {
         applicationId = "com.rayner.peregrine"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0"
 
@@ -25,7 +25,7 @@ android {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
         }
     }
@@ -39,12 +39,12 @@ android {
 }
 
 ksp {
-    arg("room.schemaLocation", "${projectDir}/schemas")
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 configurations.all {
     resolutionStrategy.eachDependency {
-        if (requested.group == "org.jetbrains.kotlin" && requested.name == "kotlin-metadata-jvm") {
+        if ((requested.group == "org.jetbrains.kotlin") && (requested.name == "kotlin-metadata-jvm")) {
             useVersion("2.4.0")
         }
     }
@@ -59,7 +59,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.core.ktx)
-    implementation("androidx.core:core-splashscreen:1.0.1")
+    implementation(libs.androidx.core.splash.screen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
 
     // Hilt

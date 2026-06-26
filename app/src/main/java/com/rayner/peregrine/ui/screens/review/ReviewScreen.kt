@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import com.rayner.peregrine.data.local.entity.ReviewItemEntity
 import com.rayner.peregrine.ui.theme.DetectionColors
@@ -157,7 +158,7 @@ fun DateHeader(text: String) {
 fun ReviewItemCard(
     item: ReviewItemEntity,
     baseUrl: String,
-    imageLoader: coil3.ImageLoader,
+    imageLoader: ImageLoader,
     onClick: () -> Unit,
 ) {
     val camera = item.camera

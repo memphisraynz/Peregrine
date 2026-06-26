@@ -1,16 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">frigate.rayner.network</domain>
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <!-- Suppress warning as cleartext is needed for local Frigate instances -->
+    <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration">
         <trust-anchors>
             <certificates src="system" />
-            <certificates src="user" />
-        </trust-anchors>
-    </domain-config>
-    <base-config cleartextTrafficPermitted="true">
-        <trust-anchors>
-            <certificates src="system" />
-            <certificates src="user" />
         </trust-anchors>
     </base-config>
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
 </network-security-config>
