@@ -12,7 +12,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,7 +20,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.rayner.peregrine.data.local.entity.ReviewItemEntity
 import com.rayner.peregrine.ui.theme.DetectionColors
@@ -33,7 +32,7 @@ import java.util.*
 @Composable
 fun ReviewScreen(
     viewModel: ReviewViewModel = hiltViewModel(),
-    onItemClick: (String) -> Unit
+    onItemClick: (String) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val filteredItems = uiState.filteredItems
@@ -49,24 +48,24 @@ fun ReviewScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
-        }
+        },
     ) { padding ->
         PullToRefreshBox(
             isRefreshing = uiState.isLoading,
             onRefresh = { viewModel.refresh() },
-            modifier = Modifier.padding(padding)
+            modifier = Modifier.padding(padding),
         ) {
             Column(
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
             ) {
                 // Segmented Control
                 SingleChoiceSegmentedButtonRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                 ) {
                     ReviewTab.entries.forEachIndexed { index, tab ->
                         SegmentedButton(
@@ -79,7 +78,7 @@ fun ReviewScreen(
                                         Icon(
                                             imageVector = Icons.Default.Check,
                                             contentDescription = null,
-                                            modifier = Modifier.size(SegmentedButtonDefaults.IconSize)
+                                            modifier = Modifier.size(SegmentedButtonDefaults.IconSize),
                                         )
                                     }
                                 }
@@ -107,7 +106,7 @@ fun ReviewScreen(
 
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 16.dp)
+                        contentPadding = PaddingValues(bottom = 16.dp),
                     ) {
                         groupedItems.forEach { (dateHeader, items) ->
                             item(key = dateHeader) {
@@ -118,8 +117,7 @@ fun ReviewScreen(
                                     item = item,
                                     baseUrl = uiState.baseUrl,
                                     imageLoader = viewModel.imageLoader,
-                                    onClick = { onItemClick(item.id) }
-                                )
+                                ) { onItemClick(item.id) }
                                 Spacer(modifier = Modifier.height(14.dp))
                             }
                         }
@@ -150,7 +148,7 @@ fun DateHeader(text: String) {
         HorizontalDivider(
             modifier = Modifier.weight(1f),
             thickness = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant
+            color = MaterialTheme.colorScheme.outlineVariant,
         )
     }
 }
@@ -197,7 +195,7 @@ fun ReviewItemCard(
                 imageLoader = imageLoader,
                 contentDescription = "$camera review thumbnail",
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
             )
 
             // Category chip top-left
@@ -206,7 +204,7 @@ fun ReviewItemCard(
                 colors = getDetectionColors(item),
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(8.dp)
+                    .padding(8.dp),
             )
 
             // Camera name pill bottom-left
@@ -215,13 +213,13 @@ fun ReviewItemCard(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(8.dp)
+                    .padding(8.dp),
             ) {
                 Text(
                     text = formatCameraName(camera),
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
 
@@ -232,7 +230,7 @@ fun ReviewItemCard(
                     .align(Alignment.BottomEnd)
                     .padding(8.dp),
                 style = MaterialTheme.typography.labelMedium,
-                color = Color.White // High contrast on image
+                color = Color.White, // High contrast on image
             )
 
             // Unreviewed dot top-right
@@ -260,7 +258,7 @@ fun DetectionChip(label: String, colors: DetectionColors.Pair, modifier: Modifie
             text = label.replaceFirstChar { it.uppercase() },
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-            color = colors.onContainer
+            color = colors.onContainer,
         )
     }
 }
@@ -274,7 +272,7 @@ fun groupReviewItemsByDate(items: List<ReviewItemEntity>): Map<String, List<Revi
         set(Calendar.MILLISECOND, 0)
     }.timeInMillis
     
-    val yesterday = today - 24 * 60 * 60 * 1000
+    val yesterday = today - (24 * 60 * 60 * 1000)
 
     val dateFormat = SimpleDateFormat("MMMM d, yyyy", Locale.getDefault())
 
@@ -296,7 +294,7 @@ fun groupReviewItemsByDate(items: List<ReviewItemEntity>): Map<String, List<Revi
 
 private fun getDisplayLabel(review: ReviewItemEntity): String {
     val subLabel = review.subLabels.firstOrNull()
-    return if (review.objects.contains("person-verified") && subLabel != null) {
+    return if ((review.objects.contains("person-verified")) && (subLabel != null)) {
         subLabel
     } else {
         review.primaryLabel ?: review.severity
@@ -305,7 +303,7 @@ private fun getDisplayLabel(review: ReviewItemEntity): String {
 
 private fun getDetectionColors(review: ReviewItemEntity): DetectionColors.Pair {
     val subLabel = review.subLabels.firstOrNull()
-    if (review.objects.contains("person-verified") && subLabel != null) {
+    if ((review.objects.contains("person-verified")) && (subLabel != null)) {
         return DetectionColors.Verified
     }
     return when (review.primaryLabel?.lowercase()) {

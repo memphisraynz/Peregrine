@@ -1,0 +1,34 @@
+fcm_message = {
+    "message": {
+        "token": token,
+        # REMOVE the top-level "notification" block for Android 
+        # to ensure onMessageReceived is always called.
+        
+        "data": {
+            # Put everything inside data
+            "title": payload.get("title"),
+            "message": payload.get("message"),
+            "image": payload.get("image") or payload.get("thumbnail"),
+            # Flatten the rest of your payload into here
+            **payload 
+        },
+        "android": {
+            "priority": "high",
+            "ttl": "0s"
+            # REMOVE "notification" here too to ensure your app handles it
+        },
+        "apns": {
+            # Keep this! iOS REQUIRES the notification block
+            "payload": {
+                "aps": {
+                    "alert": {
+                        "title": payload.get("title"),
+                        "body": payload.get("message")
+                    },
+                    "mutable-content": 1,
+                    "category": "frigate_alert"
+                }
+            }
+        }
+    }
+}
