@@ -181,7 +181,6 @@ class LiveViewModel @Inject constructor(
 
     fun onPause() {
         wsManager.disconnect()
-        _wsMotionStates.value = emptyMap()
     }
 
     private fun observeConfig() {

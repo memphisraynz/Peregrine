@@ -8,6 +8,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -26,6 +29,7 @@ fun HlsPlayer(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     val backgroundColor = MaterialTheme.colorScheme.surfaceContainer.toArgb()
 
@@ -49,8 +53,30 @@ fun HlsPlayer(
         }
     }
 
+    var isVisible by remember { mutableStateOf(true) }
+
     LaunchedEffect(isSpeakerEnabled) {
         exoPlayer.volume = if (isSpeakerEnabled) 1f else 0f
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    isVisible = true
+                    exoPlayer.play()
+                }
+                Lifecycle.Event.ON_PAUSE -> {
+                    isVisible = false
+                    exoPlayer.pause()
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     DisposableEffect(Unit) {
@@ -59,17 +85,19 @@ fun HlsPlayer(
         }
     }
 
-    AndroidView(
-        factory = { ctx ->
-            PlayerView(ctx).apply {
-                player = exoPlayer
-                useController = false
-                setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
-                setBackgroundColor(backgroundColor)
-                findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)
-                    ?.setBackgroundColor(backgroundColor)
-            }
-        },
-        modifier = modifier.fillMaxSize()
-    )
+    if (isVisible) {
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    player = exoPlayer
+                    useController = false
+                    setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+                    setBackgroundColor(backgroundColor)
+                    findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)
+                        ?.setBackgroundColor(backgroundColor)
+                }
+            },
+            modifier = modifier.fillMaxSize()
+        )
+    }
 }

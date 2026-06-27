@@ -12,6 +12,7 @@ interface FrigateRepository {
     fun getServerConfig(): Flow<ServerConfigEntity?>
     suspend fun updateServerConfig(config: ServerConfigEntity)
     suspend fun clearServerConfig()
+    suspend fun restorePersistedAuthCookie()
     suspend fun login(user: String, password: String): Result<Unit>
     suspend fun getVersion(): Result<String>
     

@@ -3,6 +3,7 @@ package com.rayner.peregrine.ui.screens.live
 import android.Manifest
 import android.content.pm.PackageManager
 import android.view.WindowManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +45,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import com.rayner.peregrine.data.local.entity.ReviewItemEntity
 import com.rayner.peregrine.domain.model.Camera
@@ -77,7 +80,6 @@ fun LiveViewScreen(
             when (event) {
                 Lifecycle.Event.ON_RESUME -> {
                     viewModel.onResume()
-                    viewModel.loadData() // Refresh data when returning to the screen
                     window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
                 Lifecycle.Event.ON_PAUSE -> {

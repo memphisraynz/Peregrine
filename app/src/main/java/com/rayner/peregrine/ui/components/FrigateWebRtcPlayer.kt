@@ -58,6 +58,7 @@ fun FrigateWebRtcPlayer(
             setEnableHardwareScaler(true)
             setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
             setMirror(false)
+            setZOrderMediaOverlay(true)
         }
     }
 
@@ -65,14 +66,17 @@ fun FrigateWebRtcPlayer(
         WebRtcPeerConnectionHolder(context, eglBase, renderer, okHttpClient)
     }
 
+    var isVisible by remember { mutableStateOf(true) }
     val isLoading = !isFirstFrameRendered
 
     DisposableEffect(lifecycleOwner, signalingUrl) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                isVisible = true
                 isFirstFrameRendered = false
                 peerConnectionHolder.start(signalingUrl)
             } else if (event == Lifecycle.Event.ON_PAUSE) {
+                isVisible = false
                 peerConnectionHolder.releasePeerConnection()
             }
         }
@@ -99,17 +103,21 @@ fun FrigateWebRtcPlayer(
     }
 
     Box(modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainer), contentAlignment = Alignment.Center) {
-        AndroidView(
-            factory = {
-                renderer
-            },
-            modifier = Modifier.aspectRatio(aspectRatio)
-        )
-        if (isLoading) {
+        if (isVisible) {
+            AndroidView(
+                factory = {
+                    renderer
+                },
+                modifier = Modifier.aspectRatio(aspectRatio)
+            )
+        }
+        if (isLoading && isVisible) {
             CircularProgressIndicator(color = Color.White)
         }
     }
 }
+
+
 
 private class WebRtcPeerConnectionHolder(
     context: Context,

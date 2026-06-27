@@ -19,6 +19,7 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.rayner.peregrine.MainActivity
 import com.rayner.peregrine.R
+import com.rayner.peregrine.domain.repository.FrigateRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
@@ -30,6 +31,9 @@ class PeregrineMessagingService : FirebaseMessagingService() {
 
     @Inject
     lateinit var imageLoader: ImageLoader
+
+    @Inject
+    lateinit var repository: FrigateRepository
 
     override fun onCreate() {
         super.onCreate()
@@ -59,25 +63,37 @@ class PeregrineMessagingService : FirebaseMessagingService() {
             }
         }
 
-        // Fetch bitmap with a strict timeout to avoid service termination
-        val bitmap = imageUrl?.let {
+        // Use a consistent ID for this message to allow updates
+        val notificationId = tag?.hashCode() ?: Random.nextInt()
+
+        // 1. Show the notification immediately without an image to ensure the user gets the alert ASAP
+        sendRichNotification(notificationId, title, body, url, null, actions, tag, alertOnce)
+
+        // 2. If there's an image, attempt to download it and update the notification
+        if (imageUrl != null) {
             runBlocking {
                 try {
-                    withTimeoutOrNull(6000) {
+                    // Ensure the repository is initialized with the correct URL and auth cookies
+                    // This is crucial if the app process was cold-started by this FCM message
+                    repository.restorePersistedAuthCookie()
+
+                    val bitmap = withTimeoutOrNull(8000) { // Slightly longer timeout
                         val request = ImageRequest.Builder(this@PeregrineMessagingService)
-                            .data(it)
+                            .data(imageUrl)
                             .build()
                         val result = imageLoader.execute(request)
                         if (result is SuccessResult) result.image.toBitmap() else null
                     }
+
+                    if (bitmap != null) {
+                        Log.d(TAG, "Image downloaded successfully, updating notification")
+                        sendRichNotification(notificationId, title, body, url, bitmap, actions, tag, alertOnce)
+                    }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Image fetch failed for $it", e)
-                    null
+                    Log.e(TAG, "Image fetch failed for $imageUrl", e)
                 }
             }
         }
-
-        sendRichNotification(title, body, url, bitmap, actions, tag, alertOnce)
     }
 
     private fun createNotificationChannel() {
@@ -98,6 +114,7 @@ class PeregrineMessagingService : FirebaseMessagingService() {
     }
 
     private fun sendRichNotification(
+        notificationId: Int,
         title: String,
         body: String,
         url: String?,
@@ -148,9 +165,6 @@ class PeregrineMessagingService : FirebaseMessagingService() {
             )
             builder.addAction(0, action.label, actionPendingIntent)
         }
-
-        // Use the 'tag' from payload as the notification ID to allow overwriting/updating
-        val notificationId = tag?.hashCode() ?: Random.nextInt()
         
         Log.d(TAG, "Posting notification: $title (ID: $notificationId, Tag: $tag, Image: ${bitmap != null})")
         notificationManager.notify(notificationId, builder.build())

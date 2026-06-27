@@ -175,6 +175,19 @@ fun SettingsScreen(
                             Toast.makeText(context, "Token copied to clipboard", Toast.LENGTH_SHORT).show()
                         }
                     )
+                    SettingsRow(
+                        icon = Icons.Default.Notifications,
+                        title = "Register for Notifications",
+                        subtitle = "Send FCM token to Frigate server",
+                        onClick = {
+                            if (fcmToken != "Fetching..." && fcmToken != "Failed to fetch") {
+                                viewModel.registerFcmToken(fcmToken)
+                                Toast.makeText(context, "Registration request sent", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "FCM token not available", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    )
                 }
             }
 

@@ -2,9 +2,11 @@ package com.rayner.peregrine.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
 import com.rayner.peregrine.data.remote.api.ServerUrlManager
 import com.rayner.peregrine.domain.repository.FrigateRepository
 import com.rayner.peregrine.data.local.entity.PreferenceEntity
+import com.rayner.peregrine.data.remote.ws.FrigateWebSocketManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,9 +29,11 @@ data class SettingsUiState(
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repository: FrigateRepository,
-    private val serverUrlManager: ServerUrlManager
+    private val serverUrlManager: ServerUrlManager,
+    private val wsManager: FrigateWebSocketManager
 ) : ViewModel() {
 
+    private val gson = Gson()
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState = _uiState.asStateFlow()
 
@@ -83,6 +87,18 @@ class SettingsViewModel @Inject constructor(
             repository.clearServerConfig()
             serverUrlManager.clear()
             onLoggedOut()
+        }
+    }
+
+    fun registerFcmToken(token: String) {
+        viewModelScope.launch {
+            val deviceName = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+            val payload = mapOf(
+                "device" to deviceName,
+                "fcm" to token
+            )
+            val payloadJson = gson.toJson(payload)
+            wsManager.sendMessage("fcm", payloadJson, autoClose = true)
         }
     }
 }

@@ -109,6 +109,27 @@ class FrigateWebSocketManager @Inject constructor(
         webSocket?.close(1000, "Disconnecting")
         webSocket = null
     }
+
+    fun sendMessage(topic: String, payload: String, autoClose: Boolean = false) {
+        scope.launch {
+            if (webSocket == null) {
+                connect()
+                // Wait a bit for connection
+                var attempts = 0
+                while (webSocket == null && attempts < 10) {
+                    kotlinx.coroutines.delay(500)
+                    attempts++
+                }
+            }
+            val msg = gson.toJson(WsMessage(topic, payload))
+            val sent = webSocket?.send(msg) ?: false
+            
+            if (autoClose && sent) {
+                kotlinx.coroutines.delay(1000) // Ensure message is sent before closing
+                disconnect()
+            }
+        }
+    }
 }
 
 data class WsMessage(

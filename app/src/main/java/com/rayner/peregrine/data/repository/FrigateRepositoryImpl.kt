@@ -61,7 +61,7 @@ class FrigateRepositoryImpl @Inject constructor(
         cameraDao.clearAll()
     }
 
-    suspend fun restorePersistedAuthCookie() {
+    override suspend fun restorePersistedAuthCookie() {
         val config = serverConfigDao.getServerConfig().firstOrNull() ?: return
         serverUrlManager.setUrl(config.serverUrl)
         val baseUrl = config.serverUrl.toHttpUrlOrNull() ?: return

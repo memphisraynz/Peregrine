@@ -13,6 +13,9 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -38,6 +41,7 @@ fun LiveVideoPlayer(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var isPlayerReady by remember { mutableStateOf(false) }
 
     val backgroundColor = MaterialTheme.colorScheme.surfaceContainer.toArgb()
@@ -59,6 +63,8 @@ fun LiveVideoPlayer(
             }
     }
 
+    var isVisible by remember { mutableStateOf(true) }
+
     LaunchedEffect(url) {
         val mediaItem = MediaItem.fromUri(url)
         exoPlayer.setMediaItem(mediaItem)
@@ -74,6 +80,26 @@ fun LiveVideoPlayer(
         exoPlayer.volume = if (isMuted) 0f else 1f
     }
 
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    isVisible = true
+                    exoPlayer.play()
+                }
+                Lifecycle.Event.ON_PAUSE -> {
+                    isVisible = false
+                    exoPlayer.pause()
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             exoPlayer.release()
@@ -86,23 +112,25 @@ fun LiveVideoPlayer(
             .background(Color.Black),
         contentAlignment = Alignment.TopCenter // Pins the actual video surface to the top
     ) {
-        AndroidView(
-            factory = {
-                PlayerView(context).apply {
-                    player = exoPlayer
-                    useController = showController
-                    controllerAutoShow = showController
-                    controllerHideOnTouch = showController
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
-                    setBackgroundColor(backgroundColor)
-                    findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)
-                        ?.setBackgroundColor(backgroundColor)
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
+        if (isVisible) {
+            AndroidView(
+                factory = {
+                    PlayerView(context).apply {
+                        player = exoPlayer
+                        useController = showController
+                        controllerAutoShow = showController
+                        controllerHideOnTouch = showController
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
+                        setBackgroundColor(backgroundColor)
+                        findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)
+                            ?.setBackgroundColor(backgroundColor)
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
         
-        if (!isPlayerReady && placeholderUrl != null) {
+        if ((!isPlayerReady || !isVisible) && placeholderUrl != null) {
             AsyncImage(
                 model = placeholderUrl,
                 imageLoader = imageLoader,
@@ -114,3 +142,5 @@ fun LiveVideoPlayer(
         }
     }
 }
+
+
