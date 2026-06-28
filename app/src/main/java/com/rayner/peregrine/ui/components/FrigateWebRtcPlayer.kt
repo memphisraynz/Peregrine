@@ -104,12 +104,14 @@ fun FrigateWebRtcPlayer(
 
     Box(modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainer), contentAlignment = Alignment.Center) {
         if (isVisible) {
-            AndroidView(
-                factory = {
-                    renderer
-                },
-                modifier = Modifier.aspectRatio(aspectRatio)
-            )
+            ZoomableBox(modifier = Modifier.aspectRatio(aspectRatio)) {
+                AndroidView(
+                    factory = {
+                        renderer
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
         if (isLoading && isVisible) {
             CircularProgressIndicator(color = Color.White)

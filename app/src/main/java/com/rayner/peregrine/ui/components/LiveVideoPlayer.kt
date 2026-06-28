@@ -113,21 +113,23 @@ fun LiveVideoPlayer(
         contentAlignment = Alignment.TopCenter // Pins the actual video surface to the top
     ) {
         if (isVisible) {
-            AndroidView(
-                factory = {
-                    PlayerView(context).apply {
-                        player = exoPlayer
-                        useController = showController
-                        controllerAutoShow = showController
-                        controllerHideOnTouch = showController
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
-                        setBackgroundColor(backgroundColor)
-                        findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)
-                            ?.setBackgroundColor(backgroundColor)
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
+            ZoomableBox(modifier = Modifier.fillMaxSize()) {
+                AndroidView(
+                    factory = {
+                        PlayerView(context).apply {
+                            player = exoPlayer
+                            useController = showController
+                            controllerAutoShow = showController
+                            controllerHideOnTouch = showController
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
+                            setBackgroundColor(backgroundColor)
+                            findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)
+                                ?.setBackgroundColor(backgroundColor)
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
         
         if ((!isPlayerReady || !isVisible) && placeholderUrl != null) {

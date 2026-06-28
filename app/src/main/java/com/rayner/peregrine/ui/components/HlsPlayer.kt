@@ -86,18 +86,20 @@ fun HlsPlayer(
     }
 
     if (isVisible) {
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    player = exoPlayer
-                    useController = false
-                    setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
-                    setBackgroundColor(backgroundColor)
-                    findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)
-                        ?.setBackgroundColor(backgroundColor)
-                }
-            },
-            modifier = modifier.fillMaxSize()
-        )
+        ZoomableBox(modifier = modifier.fillMaxSize()) {
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        player = exoPlayer
+                        useController = false
+                        setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+                        setBackgroundColor(backgroundColor)
+                        findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)
+                            ?.setBackgroundColor(backgroundColor)
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
     }
 }
