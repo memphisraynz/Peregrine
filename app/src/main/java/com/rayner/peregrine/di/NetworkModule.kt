@@ -5,8 +5,10 @@ import coil3.ImageLoader
 import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.google.gson.GsonBuilder
+import com.rayner.peregrine.data.remote.api.CookiePersistenceInterceptor
 import com.rayner.peregrine.data.remote.api.DynamicBaseUrlInterceptor
 import com.rayner.peregrine.data.remote.api.FrigateApiService
+import com.rayner.peregrine.data.remote.api.FrigateAuthenticator
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -55,10 +57,14 @@ object NetworkModule {
     @Singleton
     fun provideOkHttpClient(
         cookieJar: CookieJar,
-        baseUrlInterceptor: DynamicBaseUrlInterceptor
+        baseUrlInterceptor: DynamicBaseUrlInterceptor,
+        cookiePersistenceInterceptor: CookiePersistenceInterceptor,
+        frigateAuthenticator: FrigateAuthenticator
     ): OkHttpClient {
         return OkHttpClient.Builder()
             .addInterceptor(baseUrlInterceptor)
+            .addInterceptor(cookiePersistenceInterceptor)
+            .authenticator(frigateAuthenticator)
             .cookieJar(cookieJar)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)

@@ -127,7 +127,7 @@ class FrigateRepositoryImpl @Inject constructor(
             val response = okHttpClient.newCall(request).execute()
             response.use { r ->
                 if (r.isSuccessful) {
-                    persistAuthCookie(baseUrl)
+                    // Note: persistAuthCookie is now handled by CookiePersistenceInterceptor
                     Result.success(Unit)
                 } else {
                     val errorMsg = r.body?.string() ?: ""

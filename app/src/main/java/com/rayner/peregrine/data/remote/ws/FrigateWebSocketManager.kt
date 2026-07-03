@@ -56,15 +56,10 @@ class FrigateWebSocketManager @Inject constructor(
                 .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
                 .addHeader("Origin", "${url.scheme}://${url.host}")
 
-            if (authCookie != null) {
-                requestBuilder.addHeader("Cookie", "frigate_token=$authCookie")
-            }
-
             val request = requestBuilder.build()
 
-            // Use a clean client to avoid interference, but keep DNS settings if they were customized
-            val wsClient = OkHttpClient.Builder()
-                .connectTimeout(15, TimeUnit.SECONDS)
+            // Reuse the main OkHttpClient to benefit from CookieJar, Interceptors, and Authenticator
+            val wsClient = okHttpClient.newBuilder()
                 .readTimeout(0, TimeUnit.SECONDS)
                 .writeTimeout(0, TimeUnit.SECONDS)
                 .build()
