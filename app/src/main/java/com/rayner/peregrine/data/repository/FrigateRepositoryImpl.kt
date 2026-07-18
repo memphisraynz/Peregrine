@@ -245,6 +245,7 @@ class FrigateRepositoryImpl @Inject constructor(
                     snapshotUrl = "$baseUrl/api/$cameraName/latest.jpg",
                     hlsUrl = "$baseUrl/api/go2rtc/api/stream.m3u8?src=$preferredStream",
                     mseUrl = "$baseUrl/live/mse/api/ws?src=$preferredStream",
+                    webRtcUrl = "$baseUrl/live/webrtc/api/ws?src=$preferredStream",
                     useHls = defaultUseHls
                 )
             }
@@ -290,6 +291,7 @@ class FrigateRepositoryImpl @Inject constructor(
                     snapshotUrl = "$baseUrl/api/$cameraName/latest.jpg",
                     hlsUrl = "$baseUrl/api/go2rtc/api/stream.m3u8?src=$preferredStream",
                     mseUrl = "$baseUrl/live/mse/api/ws?src=$preferredStream",
+                    webRtcUrl = "$baseUrl/live/webrtc/api/ws?src=$preferredStream",
                     useHls = defaultUseHls
                 )
             }

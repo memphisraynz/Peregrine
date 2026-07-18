@@ -12,5 +12,6 @@ data class CameraEntity(
     val snapshotUrl: String,
     val hlsUrl: String?,
     val mseUrl: String?,
+    val webRtcUrl: String?,
     val useHls: Boolean
 )

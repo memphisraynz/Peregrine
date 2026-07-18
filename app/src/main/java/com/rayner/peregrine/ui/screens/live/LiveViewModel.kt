@@ -21,7 +21,12 @@ data class LiveUiState(
     val allReviews: List<ReviewItemEntity> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
-    val baseUrl: String = ""
+    val baseUrl: String = "",
+    val fallbackPlayerType: String = "webrtc",
+    val defaultPlayerType: String = "mse",
+    val isHlsEnabled: Boolean = true,
+    val isMseEnabled: Boolean = true,
+    val isWebRtcEnabled: Boolean = true
 )
 
 @HiltViewModel
@@ -43,7 +48,7 @@ class LiveViewModel @Inject constructor(
         val isLive: Boolean = false,
         val isMicEnabled: Boolean = false,
         val isSpeakerEnabled: Boolean = false,
-        val useHls: Boolean? = null
+        val playerOverride: String? = null // "mse", "webrtc", "hls"
     )
 
     val uiState: StateFlow<LiveUiState> = combine(
@@ -56,7 +61,12 @@ class LiveViewModel @Inject constructor(
         serverUrlManager.currentUrl,
         _cameraUiStates,
         _wsMotionStates,
-        repository.getPreferencesFlow().map { it?.alertsFilterDays ?: -12 }
+        repository.getPreferencesFlow().map { it?.alertsFilterDays ?: -12 },
+        repository.getPreferencesFlow().map { it?.fallbackPlayerType ?: "webrtc" },
+        repository.getPreferencesFlow().map { it?.defaultPlayerType ?: "mse" },
+        repository.getPreferencesFlow().map { it?.isHlsEnabled ?: true },
+        repository.getPreferencesFlow().map { it?.isMseEnabled ?: true },
+        repository.getPreferencesFlow().map { it?.isWebRtcEnabled ?: true }
     ) { array ->
         @Suppress("UNCHECKED_CAST")
         val entities = array[0] as List<com.rayner.peregrine.data.local.entity.CameraEntity>
@@ -74,11 +84,26 @@ class LiveViewModel @Inject constructor(
         @Suppress("UNCHECKED_CAST")
         val wsMotion = array[8] as Map<String, Boolean>
         val filterDays = array[9] as Int
+        val fallbackPlayerType = array[10] as String
+        val defaultPlayerType = array[11] as String
+        val isHlsEnabled = array[12] as Boolean
+        val isMseEnabled = array[13] as Boolean
+        val isWebRtcEnabled = array[14] as Boolean
 
         val cameras = entities.map { entity ->
             val ui = uiStates[entity.name] ?: CameraUiState()
             val lastReview = reviews.firstOrNull { it.camera == entity.name }
             val hasMotion = wsMotion[entity.name] ?: false
+            
+            // Determine active player type for this camera
+            // Use default if current override is disabled or not set
+            var activePlayerType = ui.playerOverride ?: (if (entity.useHls && isHlsEnabled) "hls" else defaultPlayerType)
+            
+            // Ensure the selected type is actually enabled
+            if (activePlayerType == "hls" && !isHlsEnabled) activePlayerType = defaultPlayerType
+            if (activePlayerType == "mse" && !isMseEnabled) activePlayerType = if (isWebRtcEnabled) "webrtc" else "hls"
+            if (activePlayerType == "webrtc" && !isWebRtcEnabled) activePlayerType = if (isMseEnabled) "mse" else "hls"
+
             Camera(
                 name = entity.name,
                 width = entity.width,
@@ -87,10 +112,12 @@ class LiveViewModel @Inject constructor(
                 snapshotUrl = entity.snapshotUrl,
                 hlsUrl = entity.hlsUrl,
                 mseUrl = entity.mseUrl,
+                webRtcUrl = entity.webRtcUrl,
                 isLive = ui.isLive,
                 isMicEnabled = ui.isMicEnabled,
                 isSpeakerEnabled = ui.isSpeakerEnabled,
-                useHls = ui.useHls ?: entity.useHls,
+                useHls = activePlayerType == "hls",
+                activePlayerType = activePlayerType,
                 hasMotion = hasMotion,
                 snapshotTimestamp = snapshotTimestamps[entity.name] ?: 0L,
                 lastReviewItem = lastReview
@@ -121,7 +148,12 @@ class LiveViewModel @Inject constructor(
             allReviews = reviews,
             isLoading = loading,
             error = error,
-            baseUrl = url?.removeSuffix("/") ?: ""
+            baseUrl = url?.removeSuffix("/") ?: "",
+            fallbackPlayerType = fallbackPlayerType,
+            defaultPlayerType = defaultPlayerType,
+            isHlsEnabled = isHlsEnabled,
+            isMseEnabled = isMseEnabled,
+            isWebRtcEnabled = isWebRtcEnabled
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LiveUiState())
 
@@ -276,8 +308,46 @@ class LiveViewModel @Inject constructor(
     fun togglePlayerType(cameraName: String) {
         _cameraUiStates.update { current ->
             val old = current[cameraName] ?: CameraUiState()
-            val currentActual = uiState.value.cameras.find { it.name == cameraName }?.useHls ?: true
-            current + (cameraName to old.copy(useHls = !currentActual))
+            val camera = uiState.value.cameras.find { it.name == cameraName } ?: return@update current
+            val state = uiState.value
+            
+            // Standard cycle: MSE -> WebRTC -> HLS
+            val enabledPlayers = listOf(
+                "mse" to state.isMseEnabled,
+                "webrtc" to state.isWebRtcEnabled,
+                "hls" to state.isHlsEnabled
+            ).filter { it.second }.map { it.first }
+
+            if (enabledPlayers.isEmpty()) return@update current
+
+            val currentIndex = enabledPlayers.indexOf(camera.activePlayerType)
+            val nextIndex = (currentIndex + 1) % enabledPlayers.size
+            val nextType = enabledPlayers[nextIndex]
+            
+            current + (cameraName to old.copy(playerOverride = nextType))
+        }
+    }
+
+    fun togglePlayerFallback(cameraName: String) {
+        _cameraUiStates.update { current ->
+            val old = current[cameraName] ?: CameraUiState()
+            val state = uiState.value
+            val fallbackType = state.fallbackPlayerType
+            if (fallbackType == "none") return@update current
+            
+            // Check if fallback type is enabled
+            val isEnabled = when(fallbackType) {
+                "mse" -> state.isMseEnabled
+                "webrtc" -> state.isWebRtcEnabled
+                "hls" -> state.isHlsEnabled
+                else -> false
+            }
+            if (!isEnabled) return@update current
+
+            // Only fallback if we're not already on that type
+            if (old.playerOverride == fallbackType) return@update current
+            
+            current + (cameraName to old.copy(playerOverride = fallbackType))
         }
     }
 }

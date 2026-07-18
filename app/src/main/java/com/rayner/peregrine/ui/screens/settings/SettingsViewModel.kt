@@ -20,9 +20,13 @@ import javax.inject.Inject
 data class SettingsUiState(
     val serverUrl: String = "",
     val username: String = "",
-    val defaultPlayerType: String = "hls",
+    val defaultPlayerType: String = "mse",
     val vodBuffer: Int = 5,
     val alertsFilterDays: Int = 1,
+    val fallbackPlayerType: String = "webrtc",
+    val isHlsEnabled: Boolean = true,
+    val isMseEnabled: Boolean = true,
+    val isWebRtcEnabled: Boolean = true,
     val isLoading: Boolean = false
 )
 
@@ -55,7 +59,11 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(
                     defaultPlayerType = p.defaultPlayerType,
                     vodBuffer = p.vodBuffer,
-                    alertsFilterDays = p.alertsFilterDays
+                    alertsFilterDays = p.alertsFilterDays,
+                    fallbackPlayerType = p.fallbackPlayerType,
+                    isHlsEnabled = p.isHlsEnabled,
+                    isMseEnabled = p.isMseEnabled,
+                    isWebRtcEnabled = p.isWebRtcEnabled
                 ) }
             }
         }
@@ -65,6 +73,13 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val current = repository.getPreferencesFlow().firstOrNull() ?: PreferenceEntity()
             repository.updatePreferences(current.copy(defaultPlayerType = type))
+        }
+    }
+
+    fun setFallbackPlayerType(type: String) {
+        viewModelScope.launch {
+            val current = repository.getPreferencesFlow().firstOrNull() ?: PreferenceEntity()
+            repository.updatePreferences(current.copy(fallbackPlayerType = type))
         }
     }
 
@@ -79,6 +94,19 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val current = repository.getPreferencesFlow().firstOrNull() ?: PreferenceEntity()
             repository.updatePreferences(current.copy(alertsFilterDays = days))
+        }
+    }
+
+    fun setPlayerEnabled(playerType: String, enabled: Boolean) {
+        viewModelScope.launch {
+            val current = repository.getPreferencesFlow().firstOrNull() ?: PreferenceEntity()
+            val next = when (playerType) {
+                "hls" -> current.copy(isHlsEnabled = enabled)
+                "mse" -> current.copy(isMseEnabled = enabled)
+                "webrtc" -> current.copy(isWebRtcEnabled = enabled)
+                else -> current
+            }
+            repository.updatePreferences(next)
         }
     }
 

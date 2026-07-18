@@ -6,7 +6,11 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "preferences")
 data class PreferenceEntity(
     @PrimaryKey val id: Int = 0,
-    val defaultPlayerType: String = "hls",
+    val defaultPlayerType: String = "mse",
     val vodBuffer: Int = 5,
-    val alertsFilterDays: Int = -12 // -12 for 12 hours, 0 for all, 1, 2, 3 days
+    val alertsFilterDays: Int = -12, // -12 for 12 hours, 0 for all, 1, 2, 3 days
+    val fallbackPlayerType: String = "webrtc", // "none", "mse", "webrtc", "hls"
+    val isHlsEnabled: Boolean = true,
+    val isMseEnabled: Boolean = true,
+    val isWebRtcEnabled: Boolean = true
 )

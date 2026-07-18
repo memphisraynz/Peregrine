@@ -5,7 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
-import com.rayner.peregrine.data.repository.FrigateRepositoryImpl
+import com.rayner.peregrine.domain.repository.FrigateRepository
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,7 +16,7 @@ import javax.inject.Inject
 class PeregrineApp : Application() {
 
     @Inject
-    lateinit var repository: FrigateRepositoryImpl
+    lateinit var repository: FrigateRepository
 
     override fun onCreate() {
         super.onCreate()

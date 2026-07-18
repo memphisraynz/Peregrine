@@ -26,30 +26,52 @@ fun HlsPlayer(
     url: String,
     isSpeakerEnabled: Boolean,
     okHttpClient: OkHttpClient,
+    onError: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    var isPlaying by remember { mutableStateOf(false) }
 
     val backgroundColor = MaterialTheme.colorScheme.surfaceContainer.toArgb()
 
     val exoPlayer = remember {
+        android.util.Log.d("HlsPlayer", "Initializing player with URL: $url")
         val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
         val hlsMediaSource = HlsMediaSource.Factory(dataSourceFactory)
-            .setAllowChunklessPreparation(true)
-            .createMediaSource(MediaItem.fromUri(url))
+            .setAllowChunklessPreparation(false)
+            .createMediaSource(
+                MediaItem.Builder()
+                    .setUri(url)
+                    .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
+                    .build()
+            )
 
         ExoPlayer.Builder(context).build().apply {
             setMediaSource(hlsMediaSource)
             addListener(object : Player.Listener {
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                     android.util.Log.e("HlsPlayer", "Error playing HLS stream: ${error.message}", error)
+                    onError?.invoke("HLS playback error: ${error.message}")
+                }
+
+                override fun onIsPlayingChanged(isPlayingChanged: Boolean) {
+                    isPlaying = isPlayingChanged
                 }
             })
             prepare()
             playWhenReady = true
             repeatMode = Player.REPEAT_MODE_OFF
             volume = if (isSpeakerEnabled) 1f else 0f
+        }
+    }
+
+    LaunchedEffect(isPlaying) {
+        if (!isPlaying) {
+            kotlinx.coroutines.delay(10000L) // 10 second timeout
+            if (!isPlaying) {
+                onError?.invoke("HLS playback timeout")
+            }
         }
     }
 

@@ -13,10 +13,12 @@ data class Camera(
     val snapshotUrl: String,
     val hlsUrl: String? = null,
     val mseUrl: String? = null,
+    val webRtcUrl: String? = null,
     val isLive: Boolean = false,
     val isMicEnabled: Boolean = false,
     val isSpeakerEnabled: Boolean = false,
-    val useHls: Boolean = true,
+    val useHls: Boolean = false,
+    val activePlayerType: String = "mse", // "hls", "mse", "webrtc"
     val hasMotion: Boolean = false,
     val snapshotTimestamp: Long = System.currentTimeMillis(),
     val lastReviewItem: com.rayner.peregrine.data.local.entity.ReviewItemEntity? = null

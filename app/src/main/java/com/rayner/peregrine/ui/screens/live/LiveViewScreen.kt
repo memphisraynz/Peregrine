@@ -52,6 +52,7 @@ import com.rayner.peregrine.domain.model.Camera
 import com.rayner.peregrine.ui.components.FrigateWebRtcMic
 import com.rayner.peregrine.ui.components.FrigateWebRtcPlayer
 import com.rayner.peregrine.ui.components.HlsPlayer
+import com.rayner.peregrine.ui.components.MsePlayer
 import com.rayner.peregrine.ui.theme.AlertBadgeBg
 import com.rayner.peregrine.ui.theme.AlertBadgeText
 import com.rayner.peregrine.ui.theme.DetectionColors
@@ -480,30 +481,65 @@ fun CameraDetailContent(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(280.dp) // Increased height for a "bigger" stream
+                .height(280.dp)
                 .background(Color.Black)
         ) {
             if (camera.isLive) {
-                if (camera.useHls && camera.hlsUrl != null) {
-                    HlsPlayer(
-                        url = camera.hlsUrl,
-                        isSpeakerEnabled = camera.isSpeakerEnabled,
-                        okHttpClient = okHttpClient,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else if (camera.mseUrl != null) {
-                    val signalingUrl = camera.mseUrl
-                        .replace("/live/mse/api/ws?src=", "/api/go2rtc/webrtc?src=")
-                    
-                    val ratio = camera.width.toFloat() / camera.height.toFloat()
-                    FrigateWebRtcPlayer(
-                        signalingUrl = signalingUrl,
-                        isMicEnabled = camera.isMicEnabled,
-                        isSpeakerEnabled = camera.isSpeakerEnabled,
-                        okHttpClient = okHttpClient,
-                        aspectRatio = ratio,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                when (camera.activePlayerType) {
+                    "hls" -> {
+                        if (camera.hlsUrl != null) {
+                            HlsPlayer(
+                                url = camera.hlsUrl,
+                                isSpeakerEnabled = camera.isSpeakerEnabled,
+                                okHttpClient = okHttpClient,
+                                onError = {
+                                    if (uiState.fallbackPlayerType != "none") {
+                                        viewModel.togglePlayerFallback(cameraName)
+                                    }
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+                    "mse" -> {
+                        if (camera.mseUrl != null) {
+                            MsePlayer(
+                                url = camera.mseUrl,
+                                isSpeakerEnabled = camera.isSpeakerEnabled,
+                                okHttpClient = okHttpClient,
+                                onError = {
+                                    if (uiState.fallbackPlayerType != "none") {
+                                        viewModel.togglePlayerFallback(cameraName)
+                                    }
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+                    "webrtc" -> {
+                        if (camera.webRtcUrl != null || camera.mseUrl != null) {
+                            val signalingUrl = if (camera.webRtcUrl?.contains("/live/webrtc/api/ws") == true) {
+                                camera.webRtcUrl.replace("https://", "wss://").replace("http://", "ws://")
+                            } else {
+                                camera.webRtcUrl ?: camera.mseUrl?.replace("/live/mse/api/ws?src=", "/api/go2rtc/webrtc?src=") ?: ""
+                            }
+
+                            val ratio = camera.width.toFloat() / camera.height.toFloat()
+                            FrigateWebRtcPlayer(
+                                signalingUrl = signalingUrl,
+                                isMicEnabled = camera.isMicEnabled,
+                                isSpeakerEnabled = camera.isSpeakerEnabled,
+                                okHttpClient = okHttpClient,
+                                aspectRatio = ratio,
+                                onError = {
+                                    if (uiState.fallbackPlayerType != "none") {
+                                        viewModel.togglePlayerFallback(cameraName)
+                                    }
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
                 }
             } else {
                 AsyncImage(
@@ -523,45 +559,73 @@ fun CameraDetailContent(
             LivePill(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(12.dp)
+                    .padding(8.dp)
             )
         }
 
-        // Microphone connection
-        if (camera.isMicEnabled && camera.mseUrl != null) {
-            val micSignalingUrl = camera.mseUrl
-                .replace("/live/mse/api/ws?src=", "/api/go2rtc/webrtc?src=")
-                .let { base -> "$base&media=microphone" }
-
-            FrigateWebRtcMic(
-                signalingUrl = micSignalingUrl,
-                isEnabled = true,
-                okHttpClient = okHttpClient
-            )
-        }
-
-        // FAB row
+        // Status and FAB row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top // Align to Top to bridge the vertical gap
         ) {
-            DetailFAB(
-                icon = if (camera.isMicEnabled) Icons.Default.Mic else Icons.Default.MicOff,
-                isActive = camera.isMicEnabled,
-                onClick = { viewModel.toggleMic(camera.name) },
-                activeColors = DetectionColors.Person,
-                inactiveColors = DetectionColors.Person
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            DetailFAB(
-                icon = if (camera.isSpeakerEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
-                isActive = camera.isSpeakerEnabled,
-                onClick = { viewModel.toggleSpeaker(camera.name) },
-                activeColors = DetectionColors.Animal,
-                inactiveColors = DetectionColors.Animal
+            // Player type indicator
+            Surface(
+                onClick = { viewModel.togglePlayerType(cameraName) },
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp), // Squared top to "attach"
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                modifier = Modifier.offset(y = (-12).dp) // Pull it up to touch the camera container
+            ) {
+                Box(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = camera.activePlayerType.uppercase(),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.padding(top = 16.dp), // Push buttons down so they don't touch the stream
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                DetailFAB(
+                    icon = if (camera.isMicEnabled) Icons.Default.Mic else Icons.Default.MicOff,
+                    isActive = camera.isMicEnabled,
+                    onClick = { viewModel.toggleMic(camera.name) },
+                    activeColors = DetectionColors.Person,
+                    inactiveColors = DetectionColors.Person
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                DetailFAB(
+                    icon = if (camera.isSpeakerEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                    isActive = camera.isSpeakerEnabled,
+                    onClick = { viewModel.toggleSpeaker(camera.name) },
+                    activeColors = DetectionColors.Animal,
+                    inactiveColors = DetectionColors.Animal
+                )
+            }
+        }
+
+        // Microphone connection
+        if (camera.isMicEnabled && camera.activePlayerType != "webrtc") {
+            val micSignalingUrl = if (camera.webRtcUrl?.contains("/live/webrtc/api/ws") == true) {
+                camera.webRtcUrl.replace("https://", "wss://").replace("http://", "ws://")
+            } else {
+                camera.webRtcUrl ?: camera.mseUrl?.replace("/live/mse/api/ws?src=", "/api/go2rtc/webrtc?src=") ?: ""
+            }
+            
+            FrigateWebRtcMic(
+                signalingUrl = micSignalingUrl,
+                isEnabled = camera.isMicEnabled,
+                okHttpClient = okHttpClient
             )
         }
 

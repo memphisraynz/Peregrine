@@ -31,6 +31,8 @@ import org.webrtc.*
 import org.webrtc.audio.JavaAudioDeviceModule
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 
 @Composable
 fun FrigateWebRtcPlayer(
@@ -39,6 +41,7 @@ fun FrigateWebRtcPlayer(
     isSpeakerEnabled: Boolean,
     okHttpClient: OkHttpClient,
     aspectRatio: Float,
+    onError: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -46,7 +49,7 @@ fun FrigateWebRtcPlayer(
     val eglBase = remember { EglBase.create() }
     
     var isFirstFrameRendered by remember { mutableStateOf(false) }
-    
+
     val renderer = remember {
         SurfaceViewRenderer(context).apply {
             init(eglBase.eglBaseContext, object : RendererCommon.RendererEvents {
@@ -63,11 +66,20 @@ fun FrigateWebRtcPlayer(
     }
 
     val peerConnectionHolder = remember {
-        WebRtcPeerConnectionHolder(context, eglBase, renderer, okHttpClient)
+        WebRtcPeerConnectionHolder(context, eglBase, renderer, okHttpClient, onError)
     }
 
     var isVisible by remember { mutableStateOf(true) }
     val isLoading = !isFirstFrameRendered
+
+    LaunchedEffect(isFirstFrameRendered, isVisible) {
+        if (isVisible && !isFirstFrameRendered) {
+            delay(10000L) // 10 second timeout
+            if (!isFirstFrameRendered) {
+                onError?.invoke("WebRTC connection timeout")
+            }
+        }
+    }
 
     DisposableEffect(lifecycleOwner, signalingUrl) {
         val observer = LifecycleEventObserver { _, event ->
@@ -125,7 +137,8 @@ private class WebRtcPeerConnectionHolder(
     context: Context,
     eglBase: EglBase,
     private val renderer: SurfaceViewRenderer,
-    private val okHttpClient: OkHttpClient
+    private val okHttpClient: OkHttpClient,
+    private val onError: ((String) -> Unit)? = null
 ) {
     private val appContext = context.applicationContext
     private val factory: PeerConnectionFactory
@@ -169,24 +182,40 @@ private class WebRtcPeerConnectionHolder(
         releasePeerConnection()
 
         val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         audioManager.isSpeakerphoneOn = isSpeakerEnabled
 
         val rtcConfig = PeerConnection.RTCConfiguration(listOf(
-            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()
+            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun2.l.google.com:19302").createIceServer()
         )).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
-            tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.DISABLED
+            tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.ENABLED // Allow TCP fallback
             bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
             rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
+            continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
         }
         
+        val iceGatheringDeferred = CompletableDeferred<Unit>()
+
         val pc = factory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
             override fun onSignalingChange(newState: PeerConnection.SignalingState?) = Unit
-            override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState?) = Unit
+            override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState?) {
+                if (newState == PeerConnection.IceConnectionState.FAILED || newState == PeerConnection.IceConnectionState.DISCONNECTED) {
+                    onError?.invoke("WebRTC ICE connection state: $newState")
+                }
+            }
             override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
-            override fun onIceGatheringChange(newState: PeerConnection.IceGatheringState?) = Unit
-            override fun onIceCandidate(candidate: IceCandidate?) = Unit
+            override fun onIceGatheringChange(newState: PeerConnection.IceGatheringState?) {
+                if (newState == PeerConnection.IceGatheringState.COMPLETE) {
+                    iceGatheringDeferred.complete(Unit)
+                }
+            }
+            override fun onIceCandidate(candidate: IceCandidate?) {
+                if (signalingUrl.startsWith("ws")) {
+                    sendIceCandidate(candidate)
+                }
+            }
             override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) = Unit
             override fun onAddStream(stream: MediaStream?) = Unit
             override fun onRemoveStream(stream: MediaStream?) = Unit
@@ -209,29 +238,87 @@ private class WebRtcPeerConnectionHolder(
         }) ?: return
 
         peerConnection = pc
+        this.currentPc = pc
 
-        val transceiverInit = RtpTransceiver.RtpTransceiverInit(
-            RtpTransceiver.RtpTransceiverDirection.RECV_ONLY,
-            listOf("stream0")
-        )
-        pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO, transceiverInit)
-        pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO, transceiverInit)
+        // Only add audio/mic if mic is enabled to avoid unnecessary permission/resource usage
+        pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO, 
+            RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY))
+            
+        if (isMicEnabled) {
+            val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
 
-        val offer = pc.createOfferAwait(MediaConstraints())
+            localAudioSource = factory.createAudioSource(MediaConstraints())
+            localAudioTrack = factory.createAudioTrack("audio_local", localAudioSource).also {
+                it.setEnabled(true)
+                pc.addTrack(it, listOf("stream0"))
+            }
+            isMicAdded = true
+        } else {
+            pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO, 
+                RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY))
+        }
+
+        val offer = try {
+            pc.createOfferAwait(MediaConstraints())
+        } catch (e: Exception) {
+            onError?.invoke("WebRTC create offer failed: ${e.message}")
+            return
+        }
+        
         pc.setLocalDescriptionAwait(offer)
 
+        // For HTTP signaling, we must wait for ICE gathering to complete before sending the offer
+        // as go2rtc expects the offer to contain all ICE candidates in a one-shot exchange.
+        if (!signalingUrl.startsWith("ws")) {
+            withTimeoutOrNull(2000L) {
+                iceGatheringDeferred.await()
+            }
+        }
+
         try {
-            val answerSdp = exchangeOffer(signalingUrl, offer.description)
+            val sdp = pc.localDescription.description
+            val answerSdp = exchangeOffer(signalingUrl, sdp)
             pc.setRemoteDescriptionAwait(SessionDescription(SessionDescription.Type.ANSWER, answerSdp))
             if (isMicEnabled) {
                 addMicTrack()
             }
         } catch (e: Exception) {
+            onError?.invoke("WebRTC signaling failed: ${e.message}")
         }
     }
 
+    private var currentPc: PeerConnection? = null
+    private var currentWs: okhttp3.WebSocket? = null
+
+    private fun sendIceCandidate(candidate: IceCandidate?) {
+        val ws = currentWs ?: return
+        if (candidate == null) return
+        
+        val msg = JSONObject()
+            .put("type", "webrtc/candidate")
+            .put("value", candidate.sdp)
+        ws.send(msg.toString())
+    }
+
     fun setMicEnabled(enabled: Boolean) {
+        val wasEnabled = isMicEnabled
         isMicEnabled = enabled
+        
+        if (peerConnection != null) {
+            if (enabled && !isMicAdded) {
+                scope.launch { addMicTrack() }
+            } else {
+                localAudioTrack?.setEnabled(enabled)
+                
+                val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                if (enabled) {
+                    audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                } else if (!wasEnabled) { // Only go back to normal if we were the ones who changed it
+                    audioManager.mode = AudioManager.MODE_NORMAL
+                }
+            }
+        }
     }
 
     fun setSpeakerEnabled(enabled: Boolean) {
@@ -264,7 +351,7 @@ private class WebRtcPeerConnectionHolder(
 
         localAudioSource = factory.createAudioSource(MediaConstraints())
         localAudioTrack = factory.createAudioTrack("audio_local", localAudioSource).also {
-            it.setEnabled(false)
+            it.setEnabled(isMicEnabled)
             pc.addTrack(it, listOf("stream0"))
         }
         isMicAdded = true
@@ -277,13 +364,17 @@ private class WebRtcPeerConnectionHolder(
         try {
             val offer = pc.createOfferAwait(MediaConstraints())
             pc.setLocalDescriptionAwait(offer)
-            val answerSdp = exchangeOffer(signalingUrl, offer.description)
+            val answerSdp = exchangeOffer(signalingUrl, pc.localDescription.description)
             pc.setRemoteDescriptionAwait(SessionDescription(SessionDescription.Type.ANSWER, answerSdp))
         } catch (e: Exception) {
         }
     }
 
     private suspend fun exchangeOffer(signalingUrl: String, sdp: String): String = withContext(Dispatchers.IO) {
+        if (signalingUrl.startsWith("ws://") || signalingUrl.startsWith("wss://")) {
+            return@withContext exchangeOfferWebSocket(signalingUrl, sdp)
+        }
+        
         val payload = JSONObject()
             .put("type", "offer")
             .put("sdp", sdp)
@@ -298,8 +389,57 @@ private class WebRtcPeerConnectionHolder(
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw Exception("Signaling failed: ${response.code}")
             val body = response.body?.string().orEmpty()
-            val json = JSONObject(body)
-            json.getString("sdp")
+            val json = try { JSONObject(body) } catch (e: Exception) { null }
+            json?.optString("sdp") ?: body // go2rtc can return raw SDP or JSON
+        }
+    }
+
+    private suspend fun exchangeOfferWebSocket(signalingUrl: String, sdp: String): String = suspendCancellableCoroutine { continuation ->
+        val request = Request.Builder().url(signalingUrl).build()
+        var isResumed = false
+
+        val ws = okHttpClient.newWebSocket(request, object : okhttp3.WebSocketListener() {
+            override fun onOpen(webSocket: okhttp3.WebSocket, response: okhttp3.Response) {
+                currentWs = webSocket
+                val offer = JSONObject()
+                    .put("type", "webrtc/offer")
+                    .put("value", sdp)
+                webSocket.send(offer.toString())
+            }
+
+            override fun onMessage(webSocket: okhttp3.WebSocket, text: String) {
+                try {
+                    val json = JSONObject(text)
+                    val type = json.optString("type")
+                    if (type == "webrtc/answer") {
+                        if (!isResumed) {
+                            isResumed = true
+                            continuation.resume(json.getString("value"))
+                        }
+                    } else if (type == "webrtc/candidate") {
+                        val candidateSdp = json.getString("value")
+                        currentPc?.addIceCandidate(IceCandidate("0", 0, candidateSdp))
+                    }
+                } catch (e: Exception) {
+                    if (!isResumed) {
+                        isResumed = true
+                        continuation.resumeWithException(e)
+                        webSocket.close(1000, "Error")
+                    }
+                }
+            }
+
+            override fun onFailure(webSocket: okhttp3.WebSocket, t: Throwable, response: okhttp3.Response?) {
+                if (!isResumed) {
+                    isResumed = true
+                    continuation.resumeWithException(t)
+                }
+            }
+        })
+
+        continuation.invokeOnCancellation {
+            ws.close(1000, "Cancelled")
+            currentWs = null
         }
     }
 

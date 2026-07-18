@@ -86,14 +86,52 @@ fun SettingsScreen(
             item { SettingsSectionHeader("Cameras") }
             item {
                 SettingsGroup {
+                    val playerOptions = mutableListOf<String>()
+                    if (uiState.isMseEnabled) playerOptions.add("MSE (Default in Frigate 18)")
+                    if (uiState.isWebRtcEnabled) playerOptions.add("WebRTC (Low latency)")
+                    if (uiState.isHlsEnabled) playerOptions.add("HLS (Stable)")
+                    if (playerOptions.isEmpty()) playerOptions.add("MSE (Default in Frigate 18)") // Fallback if none enabled
+
                     SettingsDropdownRow(
                         icon = Icons.Default.Videocam,
                         title = "Player type",
-                        selectedOption = if (uiState.defaultPlayerType == "hls") "HLS (Stable)" else "WebRTC (Low latency)",
-                        options = listOf("HLS (Stable)", "WebRTC (Low latency)"),
+                        selectedOption = when (uiState.defaultPlayerType) {
+                            "hls" -> "HLS (Stable)"
+                            "mse" -> "MSE (Default in Frigate 18)"
+                            "webrtc" -> "WebRTC (Low latency)"
+                            else -> "MSE (Default in Frigate 18)"
+                        },
+                        options = playerOptions,
                         onOptionSelected = { option ->
-                            val type = if (option == "HLS (Stable)") "hls" else "webrtc"
+                            val type = when {
+                                option.startsWith("HLS") -> "hls"
+                                option.startsWith("MSE") -> "mse"
+                                option.startsWith("WebRTC") -> "webrtc"
+                                else -> "mse"
+                            }
                             viewModel.setDefaultPlayerType(type)
+                        }
+                    )
+
+                    val fallbackOptions = mutableListOf("None")
+                    if (uiState.isHlsEnabled) fallbackOptions.add("HLS")
+                    if (uiState.isMseEnabled) fallbackOptions.add("MSE")
+                    if (uiState.isWebRtcEnabled) fallbackOptions.add("WebRTC")
+
+                    SettingsDropdownRow(
+                        icon = Icons.Default.Videocam,
+                        title = "Fallback player",
+                        selectedOption = when (uiState.fallbackPlayerType) {
+                            "none" -> "None"
+                            "hls" -> "HLS"
+                            "mse" -> "MSE"
+                            "webrtc" -> "WebRTC"
+                            else -> "None"
+                        },
+                        options = fallbackOptions,
+                        onOptionSelected = { option ->
+                            val type = option.lowercase()
+                            viewModel.setFallbackPlayerType(type)
                         }
                     )
                     SettingsDropdownRow(
@@ -128,11 +166,32 @@ fun SettingsScreen(
                             viewModel.setAlertsFilterDays(days)
                         }
                     )
+                }
+            }
+
+            item { SettingsSectionHeader("Enabled Players") }
+            item {
+                SettingsGroup {
                     SettingsToggleRow(
-                        icon = Icons.Default.Notifications,
-                        title = "Enable notifications",
-                        checked = true,
-                        onCheckedChange = { /* Toggle */ }
+                        icon = Icons.Default.Videocam,
+                        title = "Enable MSE",
+                        subtitle = "Fast live streaming (Frigate 18 default)",
+                        checked = uiState.isMseEnabled,
+                        onCheckedChange = { viewModel.setPlayerEnabled("mse", it) }
+                    )
+                    SettingsToggleRow(
+                        icon = Icons.Default.Videocam,
+                        title = "Enable WebRTC",
+                        subtitle = "Low latency bidirectional audio",
+                        checked = uiState.isWebRtcEnabled,
+                        onCheckedChange = { viewModel.setPlayerEnabled("webrtc", it) }
+                    )
+                    SettingsToggleRow(
+                        icon = Icons.Default.Videocam,
+                        title = "Enable HLS",
+                        subtitle = "Legacy high latency streaming",
+                        checked = uiState.isHlsEnabled,
+                        onCheckedChange = { viewModel.setPlayerEnabled("hls", it) }
                     )
                 }
             }
