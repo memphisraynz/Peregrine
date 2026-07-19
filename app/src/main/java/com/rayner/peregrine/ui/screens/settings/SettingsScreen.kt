@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,9 +12,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.ArrowDropUp
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
@@ -27,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -41,6 +43,14 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val versionName = remember {
+        try {
+            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            pInfo.versionName ?: "1.0.2"
+        } catch (e: Exception) {
+            "1.0.2"
+        }
+    }
     var fcmToken by remember { mutableStateOf("Fetching...") }
 
     LaunchedEffect(Unit) {
@@ -60,7 +70,8 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text("Settings", style = MaterialTheme.typography.headlineSmall) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -83,34 +94,31 @@ fun SettingsScreen(
                 }
             }
 
-            item { SettingsSectionHeader("Cameras") }
+            item { SettingsSectionHeader("Player Settings") }
             item {
                 SettingsGroup {
-                    val playerOptions = mutableListOf<String>()
-                    if (uiState.isMseEnabled) playerOptions.add("MSE (Default in Frigate 18)")
-                    if (uiState.isWebRtcEnabled) playerOptions.add("WebRTC (Low latency)")
-                    if (uiState.isHlsEnabled) playerOptions.add("HLS (Stable)")
-                    if (playerOptions.isEmpty()) playerOptions.add("MSE (Default in Frigate 18)") // Fallback if none enabled
+                    val playerOptions = listOf("MSE", "WebRTC", "HLS")
+                    val availableOptions = playerOptions.filter {
+                        when (it) {
+                            "MSE" -> uiState.isMseEnabled
+                            "WebRTC" -> uiState.isWebRtcEnabled
+                            "HLS" -> uiState.isHlsEnabled
+                            else -> false
+                        }
+                    }.ifEmpty { listOf("MSE") }
 
                     SettingsDropdownRow(
                         icon = Icons.Default.Videocam,
-                        title = "Player type",
-                        selectedOption = when (uiState.defaultPlayerType) {
-                            "hls" -> "HLS (Stable)"
-                            "mse" -> "MSE (Default in Frigate 18)"
-                            "webrtc" -> "WebRTC (Low latency)"
-                            else -> "MSE (Default in Frigate 18)"
-                        },
-                        options = playerOptions,
-                        onOptionSelected = { option ->
-                            val type = when {
-                                option.startsWith("HLS") -> "hls"
-                                option.startsWith("MSE") -> "mse"
-                                option.startsWith("WebRTC") -> "webrtc"
-                                else -> "mse"
-                            }
-                            viewModel.setDefaultPlayerType(type)
-                        }
+                        title = "Default player",
+                        selectedOption = uiState.defaultPlayerType.uppercase(),
+                        options = availableOptions,
+                        onOptionSelected = { viewModel.setDefaultPlayerType(it.lowercase()) }
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
                     )
 
                     val fallbackOptions = mutableListOf("None")
@@ -121,21 +129,60 @@ fun SettingsScreen(
                     SettingsDropdownRow(
                         icon = Icons.Default.Videocam,
                         title = "Fallback player",
-                        selectedOption = when (uiState.fallbackPlayerType) {
-                            "none" -> "None"
-                            "hls" -> "HLS"
-                            "mse" -> "MSE"
-                            "webrtc" -> "WebRTC"
-                            else -> "None"
-                        },
+                        selectedOption = uiState.fallbackPlayerType.replaceFirstChar { it.uppercase() },
                         options = fallbackOptions,
-                        onOptionSelected = { option ->
-                            val type = option.lowercase()
-                            viewModel.setFallbackPlayerType(type)
-                        }
+                        onOptionSelected = { viewModel.setFallbackPlayerType(it.lowercase()) }
                     )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
+                    SettingsToggleRow(
+                        icon = Icons.Default.Videocam,
+                        title = "Enable MSE",
+                        subtitle = "Fast live streaming",
+                        checked = uiState.isMseEnabled,
+                        onCheckedChange = { viewModel.setPlayerEnabled("mse", it) }
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
+                    SettingsToggleRow(
+                        icon = Icons.Default.Videocam,
+                        title = "Enable WebRTC",
+                        subtitle = "Low latency bidirectional audio",
+                        checked = uiState.isWebRtcEnabled,
+                        onCheckedChange = { viewModel.setPlayerEnabled("webrtc", it) }
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
+                    SettingsToggleRow(
+                        icon = Icons.Default.Videocam,
+                        title = "Enable HLS",
+                        subtitle = "Legacy high latency streaming",
+                        checked = uiState.isHlsEnabled,
+                        onCheckedChange = { viewModel.setPlayerEnabled("hls", it) }
+                    )
+                }
+            }
+
+            item { SettingsSectionHeader("Review Settings") }
+            item {
+                SettingsGroup {
                     SettingsDropdownRow(
-                        icon = Icons.Default.Palette,
+                        icon = Icons.Default.History,
                         title = "VOD Buffer",
                         selectedOption = "${uiState.vodBuffer} seconds",
                         options = listOf("0 seconds", "5 seconds", "10 seconds", "15 seconds"),
@@ -144,8 +191,15 @@ fun SettingsScreen(
                             viewModel.setVodBuffer(seconds)
                         }
                     )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
                     SettingsDropdownRow(
-                        icon = Icons.Default.Notifications,
+                        icon = Icons.Default.FilterList,
                         title = "Alerts filter",
                         selectedOption = when (uiState.alertsFilterDays) {
                             0 -> "All"
@@ -165,33 +219,6 @@ fun SettingsScreen(
                             }
                             viewModel.setAlertsFilterDays(days)
                         }
-                    )
-                }
-            }
-
-            item { SettingsSectionHeader("Enabled Players") }
-            item {
-                SettingsGroup {
-                    SettingsToggleRow(
-                        icon = Icons.Default.Videocam,
-                        title = "Enable MSE",
-                        subtitle = "Fast live streaming (Frigate 18 default)",
-                        checked = uiState.isMseEnabled,
-                        onCheckedChange = { viewModel.setPlayerEnabled("mse", it) }
-                    )
-                    SettingsToggleRow(
-                        icon = Icons.Default.Videocam,
-                        title = "Enable WebRTC",
-                        subtitle = "Low latency bidirectional audio",
-                        checked = uiState.isWebRtcEnabled,
-                        onCheckedChange = { viewModel.setPlayerEnabled("webrtc", it) }
-                    )
-                    SettingsToggleRow(
-                        icon = Icons.Default.Videocam,
-                        title = "Enable HLS",
-                        subtitle = "Legacy high latency streaming",
-                        checked = uiState.isHlsEnabled,
-                        onCheckedChange = { viewModel.setPlayerEnabled("hls", it) }
                     )
                 }
             }
@@ -217,12 +244,26 @@ fun SettingsScreen(
                         title = "View logs",
                         onClick = onViewLogs
                     )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
                     SettingsRow(
                         icon = Icons.Default.Info,
                         title = "About Peregrine",
-                        subtitle = "Version 1.0.0",
+                        subtitle = "Version $versionName",
                         onClick = { /* Show about */ }
                     )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
                     SettingsRow(
                         icon = Icons.Default.ContentCopy,
                         title = "FCM Registration Token",
@@ -234,6 +275,13 @@ fun SettingsScreen(
                             Toast.makeText(context, "Token copied to clipboard", Toast.LENGTH_SHORT).show()
                         }
                     )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+
                     SettingsRow(
                         icon = Icons.Default.Notifications,
                         title = "Register for Notifications",
@@ -279,50 +327,110 @@ fun SettingsDropdownRow(
     options: List<String>,
     onOptionSelected: (String) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var showDialog by remember { mutableStateOf(false) }
 
-    Box {
-        ListItem(
-            headlineContent = { Text(title, style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp)) },
-            supportingContent = { Text(selectedOption, style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp)) },
-            leadingContent = {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.size(32.dp)
+    ListItem(
+        headlineContent = {
+            Text(
+                title,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        },
+        supportingContent = {
+            Text(
+                selectedOption,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+        },
+        leadingContent = {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        },
+        trailingContent = {
+            Icon(
+                imageVector = Icons.Default.ArrowDropDown,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier.clickable { showDialog = true }
+    )
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            confirmButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text("Cancel", style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp), color = MaterialTheme.colorScheme.primary)
+                }
+            },
+            title = {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    options.forEach { option ->
+                        val isSelected = option.equals(selectedOption, ignoreCase = true)
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    text = option,
+                                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                            },
+                            trailingContent = if (isSelected) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            } else null,
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onOptionSelected(option)
+                                    showDialog = false
+                                }
+                        )
                     }
                 }
             },
-            trailingContent = {
-                Icon(
-                    imageVector = if (expanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-            modifier = Modifier.clickable { expanded = true }
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            tonalElevation = 0.dp,
+            shape = MaterialTheme.shapes.extraLarge
         )
-
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
-        ) {
-            options.forEach { option ->
-                DropdownMenuItem(
-                    text = { Text(option) },
-                    onClick = {
-                        onOptionSelected(option)
-                        expanded = false
-                    }
-                )
-            }
-        }
     }
 }
 
@@ -331,7 +439,6 @@ fun SettingsSectionHeader(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.titleMedium.copy(
-            fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         ),
         modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp)
@@ -342,7 +449,7 @@ fun SettingsSectionHeader(text: String) {
 fun SettingsGroup(content: @Composable ColumnScope.() -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
-        shape = MaterialTheme.shapes.extraLarge, // ~28dp or 16dp per guide
+        shape = MaterialTheme.shapes.extraLarge,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column {
@@ -359,8 +466,22 @@ fun SettingsRow(
     onClick: () -> Unit
 ) {
     ListItem(
-        headlineContent = { Text(title, style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp)) },
-        supportingContent = subtitle?.let { { Text(it, style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp)) } },
+        headlineContent = {
+            Text(
+                title,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        },
+        supportingContent = subtitle?.let {
+            {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
         leadingContent = {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -387,8 +508,22 @@ fun SettingsToggleRow(
     onCheckedChange: (Boolean) -> Unit
 ) {
     ListItem(
-        headlineContent = { Text(title, style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp)) },
-        supportingContent = subtitle?.let { { Text(it, style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp)) } },
+        headlineContent = {
+            Text(
+                title,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        },
+        supportingContent = subtitle?.let {
+            {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
         leadingContent = {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -396,7 +531,12 @@ fun SettingsToggleRow(
                 modifier = Modifier.size(32.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         },
@@ -405,8 +545,8 @@ fun SettingsToggleRow(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.primary,
-                    checkedTrackColor = MaterialTheme.colorScheme.onPrimary, // Pop
+                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                    checkedTrackColor = MaterialTheme.colorScheme.primary,
                 )
             )
         },

@@ -10,7 +10,7 @@ data class PreferenceEntity(
     val vodBuffer: Int = 5,
     val alertsFilterDays: Int = -12, // -12 for 12 hours, 0 for all, 1, 2, 3 days
     val fallbackPlayerType: String = "webrtc", // "none", "mse", "webrtc", "hls"
-    val isHlsEnabled: Boolean = true,
+    val isHlsEnabled: Boolean = false,
     val isMseEnabled: Boolean = true,
     val isWebRtcEnabled: Boolean = true
 )

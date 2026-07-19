@@ -22,9 +22,9 @@ data class SettingsUiState(
     val username: String = "",
     val defaultPlayerType: String = "mse",
     val vodBuffer: Int = 5,
-    val alertsFilterDays: Int = 1,
+    val alertsFilterDays: Int = -12,
     val fallbackPlayerType: String = "webrtc",
-    val isHlsEnabled: Boolean = true,
+    val isHlsEnabled: Boolean = false,
     val isMseEnabled: Boolean = true,
     val isWebRtcEnabled: Boolean = true,
     val isLoading: Boolean = false

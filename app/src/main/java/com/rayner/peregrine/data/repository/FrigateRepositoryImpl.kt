@@ -220,9 +220,6 @@ class FrigateRepositoryImpl @Inject constructor(
 
     override suspend fun refreshCameras(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val prefs = preferenceDao.getPreferences().firstOrNull()
-            val defaultUseHls = prefs?.defaultPlayerType == "hls"
-            
             val baseUrl = getBaseUrl()
             val config = apiService.getConfig()
             val camerasMap = config["cameras"] as? Map<String, Any> ?: emptyMap()
@@ -245,8 +242,7 @@ class FrigateRepositoryImpl @Inject constructor(
                     snapshotUrl = "$baseUrl/api/$cameraName/latest.jpg",
                     hlsUrl = "$baseUrl/api/go2rtc/api/stream.m3u8?src=$preferredStream",
                     mseUrl = "$baseUrl/live/mse/api/ws?src=$preferredStream",
-                    webRtcUrl = "$baseUrl/live/webrtc/api/ws?src=$preferredStream",
-                    useHls = defaultUseHls
+                    webRtcUrl = "$baseUrl/live/webrtc/api/ws?src=$preferredStream"
                 )
             }
             cameraDao.insertCameras(entities)
@@ -264,9 +260,6 @@ class FrigateRepositoryImpl @Inject constructor(
 
     override suspend fun getCameras(): Result<List<Camera>> = withContext(Dispatchers.IO) {
         try {
-            val prefs = preferenceDao.getPreferences().firstOrNull()
-            val defaultUseHls = prefs?.defaultPlayerType == "hls"
-            
             val baseUrl = getBaseUrl()
             val config = apiService.getConfig()
             val camerasMap = config["cameras"] as? Map<String, Any> ?: emptyMap()
@@ -274,9 +267,9 @@ class FrigateRepositoryImpl @Inject constructor(
             val cameras = camerasMap.mapNotNull { (cameraName, cameraConfigAny) ->
                 val cameraConfig = cameraConfigAny as? Map<*, *> ?: return@mapNotNull null
                 val live = cameraConfig["live"] as? Map<*, *>
-                val streams = live?.get("streams") as? Map<*, *>
                 
                 // Frigate logic: Use first stream in 'live.streams', or fallback to camera name
+                val streams = live?.get("streams") as? Map<*, *>
                 val preferredStream = streams?.values?.firstOrNull() as? String ?: cameraName
 
                 val detect = cameraConfig["detect"] as? Map<*, *>
@@ -292,7 +285,7 @@ class FrigateRepositoryImpl @Inject constructor(
                     hlsUrl = "$baseUrl/api/go2rtc/api/stream.m3u8?src=$preferredStream",
                     mseUrl = "$baseUrl/live/mse/api/ws?src=$preferredStream",
                     webRtcUrl = "$baseUrl/live/webrtc/api/ws?src=$preferredStream",
-                    useHls = defaultUseHls
+                    activePlayerType = "mse" // Will be updated by ViewModel
                 )
             }
             Result.success(cameras)

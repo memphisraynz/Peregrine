@@ -150,6 +150,7 @@ private class WebRtcPeerConnectionHolder(
     private var isSpeakerEnabled: Boolean = false
     private var isMicAdded: Boolean = false
     private var currentSignalingUrl: String? = null
+    private val pendingIceCandidates = java.util.Collections.synchronizedList(mutableListOf<IceCandidate>())
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     init {
@@ -165,7 +166,7 @@ private class WebRtcPeerConnectionHolder(
         )
         factory = PeerConnectionFactory.builder()
             .setAudioDeviceModule(audioDeviceModule)
-            .setVideoDecoderFactory(HardwareVideoDecoderFactory(eglBase.eglBaseContext))
+            .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
             .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
             .createPeerConnectionFactory()
     }
@@ -179,6 +180,7 @@ private class WebRtcPeerConnectionHolder(
     private suspend fun doStart(signalingUrl: String) {
         this.currentSignalingUrl = signalingUrl
         this.isMicAdded = false
+        pendingIceCandidates.clear()
         releasePeerConnection()
 
         val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -292,13 +294,19 @@ private class WebRtcPeerConnectionHolder(
     private var currentWs: okhttp3.WebSocket? = null
 
     private fun sendIceCandidate(candidate: IceCandidate?) {
-        val ws = currentWs ?: return
         if (candidate == null) return
         
-        val msg = JSONObject()
-            .put("type", "webrtc/candidate")
-            .put("value", candidate.sdp)
-        ws.send(msg.toString())
+        synchronized(pendingIceCandidates) {
+            val ws = currentWs
+            if (ws == null) {
+                pendingIceCandidates.add(candidate)
+            } else {
+                val msg = JSONObject()
+                    .put("type", "webrtc/candidate")
+                    .put("value", candidate.sdp)
+                ws.send(msg.toString())
+            }
+        }
     }
 
     fun setMicEnabled(enabled: Boolean) {
@@ -400,7 +408,19 @@ private class WebRtcPeerConnectionHolder(
 
         val ws = okHttpClient.newWebSocket(request, object : okhttp3.WebSocketListener() {
             override fun onOpen(webSocket: okhttp3.WebSocket, response: okhttp3.Response) {
-                currentWs = webSocket
+                synchronized(pendingIceCandidates) {
+                    currentWs = webSocket
+                    
+                    // Send buffered candidates
+                    pendingIceCandidates.forEach { candidate ->
+                        val msg = JSONObject()
+                            .put("type", "webrtc/candidate")
+                            .put("value", candidate.sdp)
+                        webSocket.send(msg.toString())
+                    }
+                    pendingIceCandidates.clear()
+                }
+
                 val offer = JSONObject()
                     .put("type", "webrtc/offer")
                     .put("value", sdp)
@@ -419,6 +439,36 @@ private class WebRtcPeerConnectionHolder(
                     } else if (type == "webrtc/candidate") {
                         val candidateSdp = json.getString("value")
                         currentPc?.addIceCandidate(IceCandidate("0", 0, candidateSdp))
+                    } else if (type == "webrtc/servers") {
+                        val serversJson = json.optJSONArray("value")
+                        if (serversJson != null) {
+                            val iceServers = mutableListOf<PeerConnection.IceServer>()
+                            for (i in 0 until serversJson.length()) {
+                                val serverObj = serversJson.getJSONObject(i)
+                                val urls = serverObj.optJSONArray("urls")
+                                if (urls != null && urls.length() > 0) {
+                                    val urlList = mutableListOf<String>()
+                                    for (j in 0 until urls.length()) {
+                                        urlList.add(urls.getString(j))
+                                    }
+                                    val builder = PeerConnection.IceServer.builder(urlList)
+                                    if (serverObj.has("username")) builder.setUsername(serverObj.getString("username"))
+                                    if (serverObj.has("credential")) builder.setPassword(serverObj.getString("credential"))
+                                    iceServers.add(builder.createIceServer())
+                                }
+                            }
+                            if (iceServers.isNotEmpty()) {
+                                val currentPc = currentPc ?: return@onMessage
+                                val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
+                                    sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+                                    tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.ENABLED
+                                    bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
+                                    rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
+                                    continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
+                                }
+                                currentPc.setConfiguration(rtcConfig)
+                            }
+                        }
                     }
                 } catch (e: Exception) {
                     if (!isResumed) {

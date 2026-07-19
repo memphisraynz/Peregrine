@@ -20,7 +20,7 @@ import com.rayner.peregrine.data.local.entity.ReviewItemEntity
         CameraEntity::class,
         PreferenceEntity::class,
     ],
-    version = 8, // Increment for player enablement preferences
+    version = 9, // Increment for player enablement preferences
     exportSchema = false,
 )
 @TypeConverters(ReviewItemConverters::class)

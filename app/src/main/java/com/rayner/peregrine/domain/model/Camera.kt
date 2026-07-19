@@ -17,7 +17,6 @@ data class Camera(
     val isLive: Boolean = false,
     val isMicEnabled: Boolean = false,
     val isSpeakerEnabled: Boolean = false,
-    val useHls: Boolean = false,
     val activePlayerType: String = "mse", // "hls", "mse", "webrtc"
     val hasMotion: Boolean = false,
     val snapshotTimestamp: Long = System.currentTimeMillis(),

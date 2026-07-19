@@ -96,13 +96,20 @@ class LiveViewModel @Inject constructor(
             val hasMotion = wsMotion[entity.name] ?: false
             
             // Determine active player type for this camera
-            // Use default if current override is disabled or not set
-            var activePlayerType = ui.playerOverride ?: (if (entity.useHls && isHlsEnabled) "hls" else defaultPlayerType)
+            // 1. Use manual override if set
+            // 2. Otherwise use the default from settings
+            var activePlayerType = ui.playerOverride ?: defaultPlayerType
             
-            // Ensure the selected type is actually enabled
-            if (activePlayerType == "hls" && !isHlsEnabled) activePlayerType = defaultPlayerType
-            if (activePlayerType == "mse" && !isMseEnabled) activePlayerType = if (isWebRtcEnabled) "webrtc" else "hls"
-            if (activePlayerType == "webrtc" && !isWebRtcEnabled) activePlayerType = if (isMseEnabled) "mse" else "hls"
+            // Ensure the selected type is actually enabled, otherwise fallback
+            if (activePlayerType == "hls" && !isHlsEnabled) {
+                activePlayerType = if (isMseEnabled) "mse" else if (isWebRtcEnabled) "webrtc" else "hls"
+            }
+            if (activePlayerType == "mse" && !isMseEnabled) {
+                activePlayerType = if (isWebRtcEnabled) "webrtc" else if (isHlsEnabled) "hls" else "mse"
+            }
+            if (activePlayerType == "webrtc" && !isWebRtcEnabled) {
+                activePlayerType = if (isMseEnabled) "mse" else if (isHlsEnabled) "hls" else "webrtc"
+            }
 
             Camera(
                 name = entity.name,
@@ -116,7 +123,6 @@ class LiveViewModel @Inject constructor(
                 isLive = ui.isLive,
                 isMicEnabled = ui.isMicEnabled,
                 isSpeakerEnabled = ui.isSpeakerEnabled,
-                useHls = activePlayerType == "hls",
                 activePlayerType = activePlayerType,
                 hasMotion = hasMotion,
                 snapshotTimestamp = snapshotTimestamps[entity.name] ?: 0L,
