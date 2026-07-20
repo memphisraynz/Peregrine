@@ -24,6 +24,11 @@ class DynamicBaseUrlInterceptor @Inject constructor(
 
         val configUrl = configUrlString.toHttpUrlOrNull() ?: return chain.proceed(request)
         
+        // Only replace if it's our placeholder host or a relative-looking path
+        if (request.url.host != "placeholder.api" && !request.url.host.isEmpty()) {
+            return chain.proceed(request)
+        }
+
         // Reconstruct the URL using the user-provided server details
         val newFullUrl = request.url.newBuilder()
             .scheme(configUrl.scheme)

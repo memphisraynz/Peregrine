@@ -27,6 +27,7 @@ data class SettingsUiState(
     val isHlsEnabled: Boolean = false,
     val isMseEnabled: Boolean = true,
     val isWebRtcEnabled: Boolean = true,
+    val showLatestOnly: Boolean = false,
     val isLoading: Boolean = false
 )
 
@@ -63,7 +64,8 @@ class SettingsViewModel @Inject constructor(
                     fallbackPlayerType = p.fallbackPlayerType,
                     isHlsEnabled = p.isHlsEnabled,
                     isMseEnabled = p.isMseEnabled,
-                    isWebRtcEnabled = p.isWebRtcEnabled
+                    isWebRtcEnabled = p.isWebRtcEnabled,
+                    showLatestOnly = p.showLatestOnly
                 ) }
             }
         }
@@ -107,6 +109,13 @@ class SettingsViewModel @Inject constructor(
                 else -> current
             }
             repository.updatePreferences(next)
+        }
+    }
+
+    fun setShowLatestOnly(enabled: Boolean) {
+        viewModelScope.launch {
+            val current = repository.getPreferencesFlow().firstOrNull() ?: PreferenceEntity()
+            repository.updatePreferences(current.copy(showLatestOnly = enabled))
         }
     }
 

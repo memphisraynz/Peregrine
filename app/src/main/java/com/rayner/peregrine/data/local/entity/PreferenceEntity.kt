@@ -12,5 +12,6 @@ data class PreferenceEntity(
     val fallbackPlayerType: String = "webrtc", // "none", "mse", "webrtc", "hls"
     val isHlsEnabled: Boolean = false,
     val isMseEnabled: Boolean = true,
-    val isWebRtcEnabled: Boolean = true
+    val isWebRtcEnabled: Boolean = true,
+    val showLatestOnly: Boolean = false
 )

@@ -223,6 +223,19 @@ fun SettingsScreen(
                 }
             }
 
+            item { SettingsSectionHeader("Notifications") }
+            item {
+                SettingsGroup {
+                    SettingsToggleRow(
+                        icon = Icons.Default.Notifications,
+                        title = "Show latest only",
+                        subtitle = "Group alerts by camera/category",
+                        checked = uiState.showLatestOnly,
+                        onCheckedChange = { viewModel.setShowLatestOnly(it) }
+                    )
+                }
+            }
+
             item { SettingsSectionHeader("Appearance") }
             item {
                 SettingsGroup {

@@ -19,8 +19,10 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.rayner.peregrine.MainActivity
 import com.rayner.peregrine.R
+import com.rayner.peregrine.data.local.entity.PreferenceEntity
 import com.rayner.peregrine.domain.repository.FrigateRepository
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
@@ -54,6 +56,8 @@ class PeregrineMessagingService : FirebaseMessagingService() {
         val status = data["status"]
         val alertOnce = data["alert_once"]?.toBoolean() ?: false
 
+        val prefs = runBlocking { repository.getPreferencesFlow().firstOrNull() ?: PreferenceEntity() }
+
         // Check if this is an update and if the notification is still active
         if (status != null && status != "new" && tag != null) {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -78,7 +82,11 @@ class PeregrineMessagingService : FirebaseMessagingService() {
         }
 
         // Use a consistent ID for this message to allow updates
-        val notificationId = if (tag == null) Random.nextInt() else 0
+        val notificationId = when {
+            tag != null -> 0
+            prefs.showLatestOnly -> channelId.hashCode()
+            else -> Random.nextInt()
+        }
 
         // 1. Show the notification immediately without an image to ensure the user gets the alert ASAP
         sendRichNotification(notificationId, title, body, url, null, actions, tag, alertOnce, channelId)
@@ -91,9 +99,16 @@ class PeregrineMessagingService : FirebaseMessagingService() {
                     // This is crucial if the app process was cold-started by this FCM message
                     repository.restorePersistedAuthCookie()
 
+                    val baseUrl = repository.getServerConfig().firstOrNull()?.serverUrl?.removeSuffix("/")
+                    val fullImageUrl = if (!imageUrl.startsWith("http") && baseUrl != null) {
+                        "$baseUrl${if (imageUrl.startsWith("/")) "" else "/"}$imageUrl"
+                    } else {
+                        imageUrl
+                    }
+
                     val bitmap = withTimeoutOrNull(8000) { // Slightly longer timeout
                         val request = ImageRequest.Builder(this@PeregrineMessagingService)
-                            .data(imageUrl)
+                            .data(fullImageUrl)
                             .build()
                         val result = imageLoader.execute(request)
                         if (result is SuccessResult) result.image.toBitmap() else null
