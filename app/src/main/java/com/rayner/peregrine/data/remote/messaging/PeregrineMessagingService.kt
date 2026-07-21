@@ -58,17 +58,25 @@ class PeregrineMessagingService : FirebaseMessagingService() {
 
         val prefs = runBlocking { repository.getPreferencesFlow().firstOrNull() ?: PreferenceEntity() }
 
+        val channelId = group ?: getString(R.string.default_notification_channel_id)
+
         // Check if this is an update and if the notification is still active
         if (status != null && status != "new" && tag != null) {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val isActive = notificationManager.activeNotifications.any { it.tag == tag }
+            val isActive = if (prefs.showLatestOnly) {
+                notificationManager.activeNotifications.any {
+                    it.tag == channelId && it.notification.extras.getString("frigate_event_id") == tag
+                }
+            } else {
+                notificationManager.activeNotifications.any { it.tag == tag }
+            }
+
             if (!isActive) {
-                Log.d(TAG, "Ignoring update for tag $tag as it's not in the tray")
+                Log.d(TAG, "Ignoring update for tag $tag as it's not the active notification for $channelId")
                 return
             }
         }
 
-        val channelId = group ?: getString(R.string.default_notification_channel_id)
         val channelName = formatChannelName(group)
         createNotificationChannel(channelId, channelName)
 
@@ -81,15 +89,16 @@ class PeregrineMessagingService : FirebaseMessagingService() {
             }
         }
 
-        // Use a consistent ID for this message to allow updates
-        val notificationId = when {
-            tag != null -> 0
-            prefs.showLatestOnly -> channelId.hashCode()
-            else -> Random.nextInt()
+        // Determine the ID and Tag for the notification
+        // If showLatestOnly is true, we use the channelId as a tag to overwrite any existing notification in that channel
+        val (notificationTag, notificationId) = when {
+            prefs.showLatestOnly -> channelId to 0
+            tag != null -> tag to 0
+            else -> null to Random.nextInt()
         }
 
         // 1. Show the notification immediately without an image to ensure the user gets the alert ASAP
-        sendRichNotification(notificationId, title, body, url, null, actions, tag, alertOnce, channelId)
+        sendRichNotification(notificationId, title, body, url, null, actions, notificationTag, alertOnce, channelId, tag)
 
         // 2. If there's an image, attempt to download it and update the notification
         if (imageUrl != null) {
@@ -106,20 +115,49 @@ class PeregrineMessagingService : FirebaseMessagingService() {
                         imageUrl
                     }
 
-                    val bitmap = withTimeoutOrNull(8000) { // Slightly longer timeout
-                        val request = ImageRequest.Builder(this@PeregrineMessagingService)
-                            .data(fullImageUrl)
-                            .build()
-                        val result = imageLoader.execute(request)
-                        if (result is SuccessResult) result.image.toBitmap() else null
+                    var bitmap: Bitmap? = null
+                    var lastError: String? = null
+                    val maxRetries = 3
+                    
+                    for (retry in 0 until maxRetries) {
+                        if (retry > 0) {
+                            val delayMs = 2000L * retry
+                            Log.d(TAG, "Retry $retry for image $fullImageUrl after ${delayMs}ms")
+                            kotlinx.coroutines.delay(delayMs)
+                        }
+
+                        bitmap = withTimeoutOrNull(10000) { // Increased timeout to 10s
+                            try {
+                                val request = ImageRequest.Builder(this@PeregrineMessagingService)
+                                    .data(fullImageUrl)
+                                    .build()
+                                val result = imageLoader.execute(request)
+                                if (result is SuccessResult) {
+                                    result.image.toBitmap()
+                                } else {
+                                    val error = (result as? coil3.request.ErrorResult)?.throwable?.message ?: "Unknown error"
+                                    lastError = error
+                                    Log.w(TAG, "Image fetch failed (Attempt ${retry + 1}): $error")
+                                    null
+                                }
+                            } catch (e: Exception) {
+                                lastError = e.message
+                                Log.e(TAG, "Exception during image fetch (Attempt ${retry + 1})", e)
+                                null
+                            }
+                        }
+
+                        if (bitmap != null) break
                     }
 
                     if (bitmap != null) {
                         Log.d(TAG, "Image downloaded successfully, updating notification")
-                        sendRichNotification(notificationId, title, body, url, bitmap, actions, tag, alertOnce, channelId)
+                        sendRichNotification(notificationId, title, body, url, bitmap, actions, notificationTag, alertOnce, channelId, tag)
+                    } else {
+                        Log.e(TAG, "Image download failed after $maxRetries attempts. Last error: $lastError")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Image fetch failed for $imageUrl", e)
+                    Log.e(TAG, "Image fetch orchestration failed", e)
                 }
             }
         }
@@ -161,7 +199,8 @@ class PeregrineMessagingService : FirebaseMessagingService() {
         actions: List<NotificationAction>,
         tag: String?,
         alertOnce: Boolean,
-        channelId: String
+        channelId: String,
+        eventId: String?
     ) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -172,8 +211,8 @@ class PeregrineMessagingService : FirebaseMessagingService() {
 
         // Use a unique request code to prevent intent reuse issues
         val pendingIntent = PendingIntent.getActivity(
-            this, 
-            Random.nextInt(), 
+            this,
+            Random.nextInt(),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -188,6 +227,12 @@ class PeregrineMessagingService : FirebaseMessagingService() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setOnlyAlertOnce(alertOnce)
 
+        if (eventId != null) {
+            builder.addExtras(android.os.Bundle().apply {
+                putString("frigate_event_id", eventId)
+            })
+        }
+
         if (bitmap != null) {
             builder.setStyle(NotificationCompat.BigPictureStyle().bigPicture(bitmap))
         }
@@ -197,15 +242,15 @@ class PeregrineMessagingService : FirebaseMessagingService() {
                 `package` = packageName
             }
             val actionPendingIntent = PendingIntent.getActivity(
-                this, 
-                action.url.hashCode() + index, 
-                actionIntent, 
+                this,
+                action.url.hashCode() + index,
+                actionIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             builder.addAction(0, action.label, actionPendingIntent)
         }
-        
-        Log.d(TAG, "Posting notification: $title (ID: $notificationId, Tag: $tag, Image: ${bitmap != null})")
+
+        Log.d(TAG, "Posting notification: $title (ID: $notificationId, Tag: $tag, EventId: $eventId, Image: ${bitmap != null})")
         notificationManager.notify(tag, notificationId, builder.build())
     }
 

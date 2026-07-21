@@ -2,9 +2,11 @@ package com.rayner.peregrine.data.remote.api
 
 import android.util.Log
 import com.rayner.peregrine.data.local.dao.ServerConfigDao
+import com.rayner.peregrine.data.local.entity.ServerConfigEntity
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
 import okhttp3.*
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
@@ -18,7 +20,8 @@ import javax.inject.Singleton
 @Singleton
 class FrigateAuthenticator @Inject constructor(
     private val serverConfigDao: ServerConfigDao,
-    private val serverUrlManager: ServerUrlManager
+    private val serverUrlManager: ServerUrlManager,
+    private val cookieJar: CookieJar
 ) : Authenticator {
 
     override fun authenticate(route: Route?, response: Response): Request? {
@@ -37,11 +40,8 @@ class FrigateAuthenticator @Inject constructor(
 
             val success = attemptLogin(baseUrl, username, password)
             if (success) {
-                Log.d("FrigateAuth", "Auto-login successful")
-                // The CookieJar will have the new cookie from the successful login response
-                // through the CookiePersistenceInterceptor (if we use the same client)
-                // Actually, Authenticator runs AFTER the response that triggered it.
-                // We need to make sure the original request is retried with the new cookies.
+                Log.d("FrigateAuth", "Auto-login successful, persisting cookie")
+                persistAuthCookie(baseUrl)
                 response.request.newBuilder().build()
             } else {
                 Log.e("FrigateAuth", "Auto-login failed")
@@ -53,6 +53,7 @@ class FrigateAuthenticator @Inject constructor(
     private fun attemptLogin(baseUrl: String, user: String, pass: String): Boolean {
         try {
             val client = OkHttpClient.Builder()
+                .cookieJar(cookieJar)
                 .followRedirects(true)
                 .build()
 
@@ -70,6 +71,28 @@ class FrigateAuthenticator @Inject constructor(
         } catch (e: Exception) {
             Log.e("FrigateAuth", "Login error: ${e.message}")
             return false
+        }
+    }
+
+    private suspend fun persistAuthCookie(baseUrl: String) {
+        try {
+            val existingConfig = serverConfigDao.getServerConfig().firstOrNull()
+            val normalizedBaseUrl = baseUrl.removeSuffix("/")
+            val url = normalizedBaseUrl.toHttpUrlOrNull() ?: return
+            val cookies = cookieJar.loadForRequest(url)
+            val authCookie = cookies.firstOrNull { it.name == "frigate_token" } ?: return
+            val config = existingConfig ?: ServerConfigEntity(serverUrl = normalizedBaseUrl)
+
+            serverConfigDao.insertServerConfig(
+                config.copy(
+                    serverUrl = normalizedBaseUrl,
+                    authCookie = authCookie.value,
+                    authCookieExpiresAt = authCookie.expiresAt,
+                    isLoggedIn = true
+                )
+            )
+        } catch (e: Exception) {
+            Log.e("FrigateAuth", "Failed to persist auth cookie", e)
         }
     }
 }

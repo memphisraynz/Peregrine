@@ -625,6 +625,7 @@ fun CameraDetailContent(
             FrigateWebRtcMic(
                 signalingUrl = micSignalingUrl,
                 isEnabled = camera.isMicEnabled,
+                isSpeakerEnabled = camera.isSpeakerEnabled,
                 okHttpClient = okHttpClient
             )
         }

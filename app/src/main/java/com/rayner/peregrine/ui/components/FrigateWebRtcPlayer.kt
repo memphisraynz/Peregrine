@@ -334,18 +334,26 @@ private class WebRtcPeerConnectionHolder(
         remoteAudioTrack?.setEnabled(enabled)
         val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         
-        audioManager.isSpeakerphoneOn = enabled
-        
         if (enabled) {
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val devices = audioManager.availableCommunicationDevices
-                val speaker = devices.find { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-                if (speaker != null) {
-                    audioManager.setCommunicationDevice(speaker)
+            
+            // Only force speakerphone if no bluetooth/wired headset is connected
+            val hasHeadset = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                    it.type == AudioDeviceInfo.TYPE_USB_HEADSET
                 }
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.isBluetoothA2dpOn || audioManager.isWiredHeadsetOn
             }
+            
+            audioManager.isSpeakerphoneOn = !hasHeadset
         } else {
+            audioManager.isSpeakerphoneOn = false
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 audioManager.clearCommunicationDevice()
             }

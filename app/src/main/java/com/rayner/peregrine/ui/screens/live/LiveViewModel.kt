@@ -296,7 +296,11 @@ class LiveViewModel @Inject constructor(
     fun toggleMic(cameraName: String) {
         _cameraUiStates.update { current ->
             val old = current[cameraName] ?: CameraUiState()
-            current + (cameraName to old.copy(isMicEnabled = !old.isMicEnabled))
+            val newMicEnabled = !old.isMicEnabled
+            current + (cameraName to old.copy(
+                isMicEnabled = newMicEnabled,
+                isSpeakerEnabled = if (newMicEnabled) true else old.isSpeakerEnabled
+            ))
         }
     }
 

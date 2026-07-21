@@ -91,7 +91,7 @@ class FrigateRepositoryImpl @Inject constructor(
         return dbUrl ?: serverUrlManager.getUrl()?.removeSuffix("/") ?: ""
     }
 
-    private suspend fun persistAuthCookie(baseUrl: String) {
+    override suspend fun persistAuthCookie(baseUrl: String) {
         val existingConfig = serverConfigDao.getServerConfig().firstOrNull()
         val normalizedBaseUrl = baseUrl.removeSuffix("/")
         val url = normalizedBaseUrl.toHttpUrlOrNull() ?: return

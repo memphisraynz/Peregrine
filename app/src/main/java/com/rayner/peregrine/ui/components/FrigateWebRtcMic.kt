@@ -1,6 +1,7 @@
 package com.rayner.peregrine.ui.components
 
 import android.content.Context
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
@@ -22,6 +23,7 @@ import kotlin.coroutines.resumeWithException
 fun FrigateWebRtcMic(
     signalingUrl: String,
     isEnabled: Boolean,
+    isSpeakerEnabled: Boolean = true,
     okHttpClient: OkHttpClient,
     onError: ((String) -> Unit)? = null
 ) {
@@ -45,9 +47,9 @@ fun FrigateWebRtcMic(
         }
     }
 
-    LaunchedEffect(isEnabled, signalingUrl) {
+    LaunchedEffect(isEnabled, isSpeakerEnabled, signalingUrl) {
         if (isEnabled) {
-            micHolder.start(signalingUrl)
+            micHolder.start(signalingUrl, isSpeakerEnabled)
         } else {
             micHolder.stop()
         }
@@ -86,19 +88,32 @@ private class WebRtcMicHolder(
             .createPeerConnectionFactory()
     }
 
-    fun start(signalingUrl: String) {
+    fun start(signalingUrl: String, isSpeakerEnabled: Boolean) {
         scope.launch {
-            doStart(signalingUrl)
+            doStart(signalingUrl, isSpeakerEnabled)
         }
     }
 
-    private suspend fun doStart(signalingUrl: String) {
+    private suspend fun doStart(signalingUrl: String, isSpeakerEnabled: Boolean) {
         stop()
         pendingIceCandidates.clear()
         initFactory()
 
         val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        
+        if (isSpeakerEnabled) {
+            val hasHeadset = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                it.type == AudioDeviceInfo.TYPE_USB_HEADSET
+            }
+            audioManager.isSpeakerphoneOn = !hasHeadset
+        } else {
+            audioManager.isSpeakerphoneOn = false
+        }
 
         val rtcConfig = PeerConnection.RTCConfiguration(listOf(
             PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
@@ -142,10 +157,11 @@ private class WebRtcMicHolder(
 
         peerConnection = pc
 
-        // Request a single audio transceiver in SEND_RECV mode
+        // Request a single audio transceiver in SEND_ONLY mode
+        // This ensures we don't get double audio when used alongside another player (MSE/HLS)
         pc.addTransceiver(
             MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO,
-            RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_RECV)
+            RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY)
         )
 
         audioSource = factory?.createAudioSource(MediaConstraints())
@@ -205,6 +221,7 @@ private class WebRtcMicHolder(
         
         val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         audioManager.mode = AudioManager.MODE_NORMAL
+        audioManager.isSpeakerphoneOn = false
     }
 
     fun release() {
