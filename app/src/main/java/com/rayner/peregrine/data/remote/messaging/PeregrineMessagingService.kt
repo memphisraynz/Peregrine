@@ -14,6 +14,7 @@ import androidx.core.net.toUri
 import coil3.ImageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.request.allowHardware
 import coil3.toBitmap
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -47,10 +48,15 @@ class PeregrineMessagingService : FirebaseMessagingService() {
         Log.d(TAG, "Message received! From: ${remoteMessage.from}")
         Log.d(TAG, "Data payload: $data")
 
+        // Ensure the repository is initialized with the correct URL and auth cookies immediately.
+        // This is crucial for all subsequent network calls and to ensure the CookieJar is ready.
+        runBlocking {
+            repository.restorePersistedAuthCookie()
+        }
+
         val title = data["title"] ?: remoteMessage.notification?.title ?: "Frigate Alert"
         val body = data["message"] ?: data["body"] ?: remoteMessage.notification?.body ?: "Detection"
         val url = data["url"] ?: data["click_action"]
-        val imageUrl = data["image"] ?: data["photo"] ?: data["thumbnail"]
         val tag = data["tag"]
         val group = data["group"]
         val status = data["status"]
@@ -101,35 +107,47 @@ class PeregrineMessagingService : FirebaseMessagingService() {
         sendRichNotification(notificationId, title, body, url, null, actions, notificationTag, alertOnce, channelId, tag)
 
         // 2. If there's an image, attempt to download it and update the notification
-        if (imageUrl != null) {
+        val imageCandidates = listOfNotNull(
+            data["image"],
+            data["photo"],
+            data["thumbnail"],
+            data["snapshot"],
+            data["image_url"],
+            remoteMessage.notification?.imageUrl?.toString()
+        ).distinct()
+
+        if (imageCandidates.isNotEmpty()) {
             runBlocking {
                 try {
-                    // Ensure the repository is initialized with the correct URL and auth cookies
-                    // This is crucial if the app process was cold-started by this FCM message
-                    repository.restorePersistedAuthCookie()
-
                     val baseUrl = repository.getServerConfig().firstOrNull()?.serverUrl?.removeSuffix("/")
-                    val fullImageUrl = if (!imageUrl.startsWith("http") && baseUrl != null) {
-                        "$baseUrl${if (imageUrl.startsWith("/")) "" else "/"}$imageUrl"
-                    } else {
-                        imageUrl
-                    }
-
+                    
                     var bitmap: Bitmap? = null
                     var lastError: String? = null
-                    val maxRetries = 3
+                    val maxRetries = 3 // Increased retries to try different candidates
                     
                     for (retry in 0 until maxRetries) {
+                        // Pick a candidate URL. Try to cycle through them if there are multiple.
+                        val rawImageUrl = imageCandidates[retry % imageCandidates.size]
+                        val fullImageUrl = if (!rawImageUrl.startsWith("http") && baseUrl != null) {
+                            "$baseUrl${if (rawImageUrl.startsWith("/")) "" else "/"}$rawImageUrl"
+                        } else {
+                            rawImageUrl
+                        }
+
                         if (retry > 0) {
-                            val delayMs = 2000L * retry
+                            val delayMs = 1500L * retry
                             Log.d(TAG, "Retry $retry for image $fullImageUrl after ${delayMs}ms")
                             kotlinx.coroutines.delay(delayMs)
                         }
 
-                        bitmap = withTimeoutOrNull(10000) { // Increased timeout to 10s
+                        Log.d(TAG, "Attempting to fetch image: $fullImageUrl (Attempt ${retry + 1})")
+
+                        bitmap = withTimeoutOrNull(8000) { // 8s timeout per attempt
                             try {
                                 val request = ImageRequest.Builder(this@PeregrineMessagingService)
                                     .data(fullImageUrl)
+                                    .allowHardware(false) // Required for RemoteViews
+                                    .size(1024, 1024)    // Reasonable limit for notifications
                                     .build()
                                 val result = imageLoader.execute(request)
                                 if (result is SuccessResult) {
@@ -151,8 +169,21 @@ class PeregrineMessagingService : FirebaseMessagingService() {
                     }
 
                     if (bitmap != null) {
-                        Log.d(TAG, "Image downloaded successfully, updating notification")
-                        sendRichNotification(notificationId, title, body, url, bitmap, actions, notificationTag, alertOnce, channelId, tag)
+                        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        val stillActive = if (prefs.showLatestOnly) {
+                            notificationManager.activeNotifications.any {
+                                it.tag == channelId && it.notification.extras.getString("frigate_event_id") == tag
+                            }
+                        } else {
+                            notificationManager.activeNotifications.any { it.tag == tag }
+                        }
+
+                        if (stillActive) {
+                            Log.d(TAG, "Image downloaded successfully, updating notification")
+                            sendRichNotification(notificationId, title, body, url, bitmap, actions, notificationTag, alertOnce, channelId, tag)
+                        } else {
+                            Log.d(TAG, "Notification was dismissed or replaced while downloading image, skipping update")
+                        }
                     } else {
                         Log.e(TAG, "Image download failed after $maxRetries attempts. Last error: $lastError")
                     }
@@ -234,7 +265,10 @@ class PeregrineMessagingService : FirebaseMessagingService() {
         }
 
         if (bitmap != null) {
-            builder.setStyle(NotificationCompat.BigPictureStyle().bigPicture(bitmap))
+            builder.setLargeIcon(bitmap)
+            builder.setStyle(NotificationCompat.BigPictureStyle()
+                .bigPicture(bitmap)
+                .bigLargeIcon(null as Bitmap?))
         }
 
         actions.forEachIndexed { index, action ->
