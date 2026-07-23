@@ -66,6 +66,8 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.work.compiler)
 
     // Retrofit & OkHttp
     implementation(libs.retrofit)
@@ -78,6 +80,9 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+
+    // WorkManager
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
 
     // Navigation
     implementation(libs.navigation.compose)

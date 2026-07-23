@@ -11,7 +11,12 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
+import androidx.work.WorkManager
 import coil3.ImageLoader
+import coil3.network.NetworkHeaders
+import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
@@ -25,7 +30,6 @@ import com.rayner.peregrine.domain.repository.FrigateRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import kotlin.random.Random
 
@@ -49,7 +53,6 @@ class PeregrineMessagingService : FirebaseMessagingService() {
         Log.d(TAG, "Data payload: $data")
 
         // Ensure the repository is initialized with the correct URL and auth cookies immediately.
-        // This is crucial for all subsequent network calls and to ensure the CookieJar is ready.
         runBlocking {
             repository.restorePersistedAuthCookie()
         }
@@ -96,100 +99,91 @@ class PeregrineMessagingService : FirebaseMessagingService() {
         }
 
         // Determine the ID and Tag for the notification
-        // If showLatestOnly is true, we use the channelId as a tag to overwrite any existing notification in that channel
         val (notificationTag, notificationId) = when {
             prefs.showLatestOnly -> channelId to 0
             tag != null -> tag to 0
             else -> null to Random.nextInt()
         }
 
-        // 1. Show the notification immediately without an image to ensure the user gets the alert ASAP
-        sendRichNotification(notificationId, title, body, url, null, actions, notificationTag, alertOnce, channelId, tag)
-
-        // 2. If there's an image, attempt to download it and update the notification
+        // 1. Determine image candidates and handle first attempt immediately for zero latency
         val imageCandidates = listOfNotNull(
             data["image"],
-            data["photo"],
             data["thumbnail"],
+            data["photo"],
             data["snapshot"],
             data["image_url"],
             remoteMessage.notification?.imageUrl?.toString()
         ).distinct()
 
+        var firstAttemptSuccess = false
         if (imageCandidates.isNotEmpty()) {
             runBlocking {
                 try {
-                    val baseUrl = repository.getServerConfig().firstOrNull()?.serverUrl?.removeSuffix("/")
+                    val config = repository.getServerConfig().firstOrNull()
+                    val baseUrl = config?.serverUrl?.removeSuffix("/")
+                    val authCookie = config?.authCookie
                     
-                    var bitmap: Bitmap? = null
-                    var lastError: String? = null
-                    val maxRetries = 3 // Increased retries to try different candidates
-                    
-                    for (retry in 0 until maxRetries) {
-                        // Pick a candidate URL. Try to cycle through them if there are multiple.
-                        val rawImageUrl = imageCandidates[retry % imageCandidates.size]
-                        val fullImageUrl = if (!rawImageUrl.startsWith("http") && baseUrl != null) {
-                            "$baseUrl${if (rawImageUrl.startsWith("/")) "" else "/"}$rawImageUrl"
-                        } else {
-                            rawImageUrl
-                        }
-
-                        if (retry > 0) {
-                            val delayMs = 1500L * retry
-                            Log.d(TAG, "Retry $retry for image $fullImageUrl after ${delayMs}ms")
-                            kotlinx.coroutines.delay(delayMs)
-                        }
-
-                        Log.d(TAG, "Attempting to fetch image: $fullImageUrl (Attempt ${retry + 1})")
-
-                        bitmap = withTimeoutOrNull(8000) { // 8s timeout per attempt
-                            try {
-                                val request = ImageRequest.Builder(this@PeregrineMessagingService)
-                                    .data(fullImageUrl)
-                                    .allowHardware(false) // Required for RemoteViews
-                                    .size(1024, 1024)    // Reasonable limit for notifications
-                                    .build()
-                                val result = imageLoader.execute(request)
-                                if (result is SuccessResult) {
-                                    result.image.toBitmap()
-                                } else {
-                                    val error = (result as? coil3.request.ErrorResult)?.throwable?.message ?: "Unknown error"
-                                    lastError = error
-                                    Log.w(TAG, "Image fetch failed (Attempt ${retry + 1}): $error")
-                                    null
-                                }
-                            } catch (e: Exception) {
-                                lastError = e.message
-                                Log.e(TAG, "Exception during image fetch (Attempt ${retry + 1})", e)
-                                null
-                            }
-                        }
-
-                        if (bitmap != null) break
+                    val rawImageUrl = imageCandidates.first()
+                    val fullImageUrl = if (!rawImageUrl.startsWith("http") && baseUrl != null) {
+                        "$baseUrl${if (rawImageUrl.startsWith("/")) "" else "/"}$rawImageUrl"
+                    } else {
+                        rawImageUrl
                     }
 
-                    if (bitmap != null) {
-                        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                        val stillActive = if (prefs.showLatestOnly) {
-                            notificationManager.activeNotifications.any {
-                                it.tag == channelId && it.notification.extras.getString("frigate_event_id") == tag
-                            }
-                        } else {
-                            notificationManager.activeNotifications.any { it.tag == tag }
-                        }
+                    Log.d(TAG, "Attempting instant direct fetch: $fullImageUrl")
+                    val startTime = System.currentTimeMillis()
 
-                        if (stillActive) {
-                            Log.d(TAG, "Image downloaded successfully, updating notification")
-                            sendRichNotification(notificationId, title, body, url, bitmap, actions, notificationTag, alertOnce, channelId, tag)
-                        } else {
-                            Log.d(TAG, "Notification was dismissed or replaced while downloading image, skipping update")
-                        }
+                    val requestBuilder = ImageRequest.Builder(this@PeregrineMessagingService)
+                        .data(fullImageUrl)
+                        .allowHardware(false)
+                        .size(640, 640)
+                    
+                    if (authCookie != null) {
+                        val headers = NetworkHeaders.Builder()
+                            .add("Cookie", "frigate_token=$authCookie")
+                            .build()
+                        requestBuilder.httpHeaders(headers)
+                    }
+                    
+                    val result = imageLoader.execute(requestBuilder.build())
+                    if (result is SuccessResult) {
+                        val bitmap = result.image.toBitmap()
+                        Log.d(TAG, "Instant fetch succeeded in ${System.currentTimeMillis() - startTime}ms")
+                        sendRichNotification(notificationId, title, body, url, bitmap, actions, notificationTag, alertOnce, channelId, tag)
+                        firstAttemptSuccess = true
                     } else {
-                        Log.e(TAG, "Image download failed after $maxRetries attempts. Last error: $lastError")
+                        Log.w(TAG, "Instant fetch failed, will fallback to worker")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Image fetch orchestration failed", e)
+                    Log.e(TAG, "Instant fetch exception", e)
                 }
+            }
+        }
+
+        // 2. If no image or first attempt failed, show text-only alert immediately
+        if (!firstAttemptSuccess) {
+            sendRichNotification(notificationId, title, body, url, null, actions, notificationTag, alertOnce, channelId, tag)
+            
+            // 3. Offload to WorkManager if there are candidates left to try
+            if (imageCandidates.isNotEmpty()) {
+                val workRequest = OneTimeWorkRequestBuilder<NotificationImageWorker>()
+                    .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                    .setInputData(
+                        NotificationImageWorker.createInputData(
+                            title = title,
+                            body = body,
+                            url = url,
+                            tag = notificationTag,
+                            channelId = channelId,
+                            eventId = tag,
+                            notificationId = notificationId,
+                            imageCandidates = imageCandidates
+                        )
+                    )
+                    .build()
+
+                WorkManager.getInstance(this).enqueue(workRequest)
+                Log.d(TAG, "Scheduled fallback image download worker for $title")
             }
         }
     }
@@ -233,59 +227,19 @@ class PeregrineMessagingService : FirebaseMessagingService() {
         channelId: String,
         eventId: String?
     ) {
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        val intent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            if (url != null) data = url.toUri()
-        }
-
-        // Use a unique request code to prevent intent reuse issues
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            Random.nextInt(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        NotificationHelper.sendRichNotification(
+            context = this,
+            notificationId = notificationId,
+            title = title,
+            body = body,
+            url = url,
+            bitmap = bitmap,
+            actions = actions,
+            tag = tag,
+            alertOnce = alertOnce,
+            channelId = channelId,
+            eventId = eventId
         )
-
-        val builder = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(R.drawable.ic_stat_notification)
-            .setColor(ContextCompat.getColor(this, R.color.purple_500))
-            .setContentTitle(title)
-            .setContentText(body)
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setOnlyAlertOnce(alertOnce)
-
-        if (eventId != null) {
-            builder.addExtras(android.os.Bundle().apply {
-                putString("frigate_event_id", eventId)
-            })
-        }
-
-        if (bitmap != null) {
-            builder.setLargeIcon(bitmap)
-            builder.setStyle(NotificationCompat.BigPictureStyle()
-                .bigPicture(bitmap)
-                .bigLargeIcon(null as Bitmap?))
-        }
-
-        actions.forEachIndexed { index, action ->
-            val actionIntent = Intent(Intent.ACTION_VIEW, action.url.toUri()).apply {
-                `package` = packageName
-            }
-            val actionPendingIntent = PendingIntent.getActivity(
-                this,
-                action.url.hashCode() + index,
-                actionIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            builder.addAction(0, action.label, actionPendingIntent)
-        }
-
-        Log.d(TAG, "Posting notification: $title (ID: $notificationId, Tag: $tag, EventId: $eventId, Image: ${bitmap != null})")
-        notificationManager.notify(tag, notificationId, builder.build())
     }
 
     override fun onNewToken(token: String) {
