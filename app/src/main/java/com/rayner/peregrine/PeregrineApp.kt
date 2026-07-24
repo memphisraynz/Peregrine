@@ -23,7 +23,7 @@ class PeregrineApp : Application() {
         createNotificationChannel()
         
         CoroutineScope(Dispatchers.IO).launch {
-            repository.restorePersistedAuthCookie()
+            repository.restoreServerUrl()
         }
     }
 

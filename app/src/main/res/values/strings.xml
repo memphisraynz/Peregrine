@@ -4,4 +4,8 @@
     <string name="default_notification_channel_id">frigate_alerts</string>
     <string name="default_notification_channel_name">Frigate Alerts</string>
     <string name="default_notification_channel_description">Notifications for person and object detections.</string>
+    <string name="background_data_dialog_title">Allow background data</string>
+    <string name="background_data_dialog_message">Peregrine fetches notification images while your phone is asleep or the app is closed. Android is currently blocking that background data, so images may fail to load. Allow unrestricted data usage for Peregrine to fix this.</string>
+    <string name="background_data_dialog_positive">Open settings</string>
+    <string name="background_data_dialog_negative">Not now</string>
 </resources>

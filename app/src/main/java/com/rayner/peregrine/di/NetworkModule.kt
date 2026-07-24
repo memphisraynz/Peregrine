@@ -2,10 +2,13 @@ package com.rayner.peregrine.di
 
 import android.content.Context
 import coil3.ImageLoader
+import coil3.annotation.ExperimentalCoilApi
 import coil3.memory.MemoryCache
+import coil3.network.ConnectivityChecker
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.google.gson.GsonBuilder
-import com.rayner.peregrine.data.remote.api.CookiePersistenceInterceptor
+import com.rayner.peregrine.data.local.dao.ServerConfigDao
+import com.rayner.peregrine.data.remote.api.DatabaseBackedCookieJar
 import com.rayner.peregrine.data.remote.api.DynamicBaseUrlInterceptor
 import com.rayner.peregrine.data.remote.api.FrigateApiService
 import com.rayner.peregrine.data.remote.api.FrigateAuthenticator
@@ -14,9 +17,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import okhttp3.Cookie
 import okhttp3.CookieJar
-import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -30,27 +31,8 @@ class NetworkModule {
 
     @Provides
     @Singleton
-    fun provideCookieJar(): CookieJar {
-        return object : CookieJar {
-            private val cookieStore = mutableMapOf<String, List<Cookie>>()
-
-            override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-                val existingCookies = cookieStore[url.host].orEmpty()
-                    .associateBy { it.name }
-                    .toMutableMap()
-                cookies.forEach { cookie ->
-                    existingCookies[cookie.name] = cookie
-                }
-                cookieStore[url.host] = existingCookies.values.toList()
-            }
-
-            override fun loadForRequest(url: HttpUrl): List<Cookie> {
-                val now = System.currentTimeMillis()
-                return cookieStore[url.host]
-                    ?.filter { it.expiresAt > now }
-                    .orEmpty()
-            }
-        }
+    fun provideCookieJar(serverConfigDao: ServerConfigDao): CookieJar {
+        return DatabaseBackedCookieJar(serverConfigDao)
     }
 
     @Provides
@@ -58,12 +40,10 @@ class NetworkModule {
     fun provideOkHttpClient(
         cookieJar: CookieJar,
         baseUrlInterceptor: DynamicBaseUrlInterceptor,
-        cookiePersistenceInterceptor: CookiePersistenceInterceptor,
         frigateAuthenticator: FrigateAuthenticator
     ): OkHttpClient {
         return OkHttpClient.Builder()
             .addInterceptor(baseUrlInterceptor)
-            .addInterceptor(cookiePersistenceInterceptor)
             .authenticator(frigateAuthenticator)
             .cookieJar(cookieJar)
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -89,6 +69,7 @@ class NetworkModule {
             .create(FrigateApiService::class.java)
     }
 
+    @OptIn(ExperimentalCoilApi::class)
     @Provides
     @Singleton
     fun provideImageLoader(
@@ -97,7 +78,21 @@ class NetworkModule {
     ): ImageLoader {
         return ImageLoader.Builder(context)
             .components {
-                add(OkHttpNetworkFetcherFactory(callFactory = { okHttpClient }))
+                add(
+                    OkHttpNetworkFetcherFactory(
+                        callFactory = { okHttpClient },
+                        // Coil's default connectivity pre-check asks ConnectivityManager
+                        // whether this process currently has internet access before it will
+                        // even attempt a request. That check is background-restriction-aware:
+                        // it can report no connectivity for a background FCM service during
+                        // Doze/sleep even though the network is genuinely up, causing Coil to
+                        // skip the network entirely and fail locally with a synthetic
+                        // "504 Unsatisfiable Request" - no request is ever sent. Notifications
+                        // must fetch images from a background service, so that pre-check does
+                        // more harm than good here; always attempt the real request instead.
+                        connectivityChecker = { ConnectivityChecker.ONLINE }
+                    )
+                )
             }
             .memoryCache {
                 MemoryCache.Builder()

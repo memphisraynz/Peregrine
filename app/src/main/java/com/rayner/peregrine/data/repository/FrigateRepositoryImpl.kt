@@ -1,5 +1,6 @@
 package com.rayner.peregrine.data.repository
 
+import android.util.Log
 import com.rayner.peregrine.data.local.dao.CameraDao
 import com.rayner.peregrine.data.local.dao.ExploreDao
 import com.rayner.peregrine.data.local.dao.ReviewDao
@@ -16,8 +17,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
-import okhttp3.Cookie
-import okhttp3.CookieJar
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -36,7 +35,6 @@ class FrigateRepositoryImpl @Inject constructor(
     private val cameraDao: CameraDao,
     private val preferenceDao: com.rayner.peregrine.data.local.dao.PreferenceDao,
     private val okHttpClient: OkHttpClient,
-    private val cookieJar: CookieJar,
     private val serverUrlManager: com.rayner.peregrine.data.remote.api.ServerUrlManager
 ) : FrigateRepository {
 
@@ -61,52 +59,23 @@ class FrigateRepositoryImpl @Inject constructor(
         cameraDao.clearAll()
     }
 
-    override suspend fun restorePersistedAuthCookie() {
-        val config = serverConfigDao.getServerConfig().firstOrNull() ?: return
-        serverUrlManager.setUrl(config.serverUrl)
-        val baseUrl = config.serverUrl.toHttpUrlOrNull() ?: return
-        val tokenCookie = config.authCookie ?: return
-        val expiresAt = config.authCookieExpiresAt ?: return
-        if (expiresAt <= System.currentTimeMillis()) return
-
-        val cookieBuilder = Cookie.Builder()
-            .name("frigate_token")
-            .value(tokenCookie)
-            .expiresAt(expiresAt)
-            .httpOnly()
-            .path("/")
-            .hostOnlyDomain(baseUrl.host)
-            
-        if (baseUrl.isHttps) {
-            cookieBuilder.secure()
+    override suspend fun restoreServerUrl() {
+        val config = serverConfigDao.getServerConfig().firstOrNull()
+        if (config == null) {
+            Log.w("FrigateRepo", "Restore failed: No server config in DB")
+            return
         }
-        
-        val cookie = cookieBuilder.build()
 
-        cookieJar.saveFromResponse(baseUrl, listOf(cookie))
+        serverUrlManager.setUrl(config.serverUrl)
+
+        if (config.serverUrl.toHttpUrlOrNull() == null) {
+            Log.e("FrigateRepo", "Restore failed: Invalid server URL: ${config.serverUrl}")
+        }
     }
 
     private suspend fun getBaseUrl(): String {
         val dbUrl = serverConfigDao.getServerConfig().firstOrNull()?.serverUrl?.removeSuffix("/")
         return dbUrl ?: serverUrlManager.getUrl()?.removeSuffix("/") ?: ""
-    }
-
-    override suspend fun persistAuthCookie(baseUrl: String) {
-        val existingConfig = serverConfigDao.getServerConfig().firstOrNull()
-        val normalizedBaseUrl = baseUrl.removeSuffix("/")
-        val url = normalizedBaseUrl.toHttpUrlOrNull() ?: return
-        val cookies = cookieJar.loadForRequest(url)
-        val authCookie = cookies.firstOrNull { it.name == "frigate_token" } ?: return
-        val config = existingConfig ?: ServerConfigEntity(serverUrl = normalizedBaseUrl)
-
-        serverConfigDao.insertServerConfig(
-            config.copy(
-                serverUrl = normalizedBaseUrl,
-                authCookie = authCookie.value,
-                authCookieExpiresAt = authCookie.expiresAt,
-                isLoggedIn = true
-            )
-        )
     }
 
     override suspend fun login(user: String, password: String): Result<Unit> = withContext(Dispatchers.IO) {
@@ -127,7 +96,7 @@ class FrigateRepositoryImpl @Inject constructor(
             val response = okHttpClient.newCall(request).execute()
             response.use { r ->
                 if (r.isSuccessful) {
-                    // Note: persistAuthCookie is now handled by CookiePersistenceInterceptor
+                    // The shared cookieJar persists the Set-Cookie from this response directly.
                     Result.success(Unit)
                 } else {
                     val errorMsg = r.body?.string() ?: ""

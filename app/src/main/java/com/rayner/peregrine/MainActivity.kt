@@ -1,6 +1,11 @@
 package com.rayner.peregrine
 
+import android.app.AlertDialog
+import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.result.contract.ActivityResultContracts
 import android.Manifest
 import android.os.Bundle
@@ -33,10 +38,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         checkPermissions()
+        checkBackgroundDataRestriction()
 
         (repository as? FrigateRepositoryImpl)?.let { repo ->
             lifecycleScope.launch {
-                repo.restorePersistedAuthCookie()
+                repo.restoreServerUrl()
             }
         }
 
@@ -62,5 +68,35 @@ class MainActivity : ComponentActivity() {
         if (permissions.isNotEmpty()) {
             requestPermissionLauncher.launch(permissions.toTypedArray())
         }
+    }
+
+    // Notification images are fetched from a background service (PeregrineMessagingService)
+    // while the phone may be asleep. Data Saver's per-app "unrestricted data usage" exemption
+    // is separate from battery optimization and isn't granted by default - without it, those
+    // background fetches fail. Re-checked on every launch, since it stops firing on its own
+    // once the user grants it (no dismissal state to track).
+    private fun checkBackgroundDataRestriction() {
+        val connectivityManager = getSystemService(ConnectivityManager::class.java) ?: return
+        if (connectivityManager.restrictBackgroundStatus != ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED) {
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.background_data_dialog_title)
+            .setMessage(R.string.background_data_dialog_message)
+            .setPositiveButton(R.string.background_data_dialog_positive) { _, _ -> openBackgroundDataSettings() }
+            .setNegativeButton(R.string.background_data_dialog_negative, null)
+            .show()
+    }
+
+    private fun openBackgroundDataSettings() {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            Intent(Settings.ACTION_IGNORE_BACKGROUND_DATA_RESTRICTIONS_SETTINGS)
+        } else {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+        }.apply {
+            data = Uri.fromParts("package", packageName, null)
+        }
+        startActivity(intent)
     }
 }
